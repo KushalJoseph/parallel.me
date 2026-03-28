@@ -1,0 +1,248 @@
+"use client";
+
+import { useState, useRef, useEffect, KeyboardEvent } from "react";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { Settings } from "lucide-react";
+import { SettingsDrawer } from "@/components/SettingsDrawer";
+
+type Message = {
+  id: string;
+  text: string;
+  isMine?: boolean;
+  isSystem?: boolean;
+};
+
+const MOCK_MESSAGES = [
+  "I think the heaviest part is pretending everything is fine when it's just so loud.",
+  "Yeah I get that. It's exhausting having to perform.",
+  "It's nice to just say it out loud without someone trying to 'fix' it immediately."
+];
+
+export default function ChatPage() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [timeLeft, setTimeLeft] = useState(23 * 3600 + 59 * 60 + 50);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showNudge, setShowNudge] = useState(false);
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  const [identityChips, setIdentityChips] = useState(["Share first name", "Share city"]);
+  
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const router = useRouter();
+  const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, showNudge]);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 140)}px`;
+    }
+  }, [input]);
+
+  useEffect(() => {
+    if (nudgeDismissed) return;
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    
+    // Simulate an AI whisper perfectly interrupting after 8s of absolute silence
+    typingTimerRef.current = setTimeout(() => {
+      if (messages.length > 0) setShowNudge(true);
+    }, 8000);
+
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    };
+  }, [messages, nudgeDismissed, input]);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => injectMock(MOCK_MESSAGES[0]), 3000);
+    const t2 = setTimeout(() => injectMock(MOCK_MESSAGES[1]), 12000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+
+  const injectMock = (text: string) => {
+    setMessages(prev => [...prev, { id: Math.random().toString(), text, isMine: false }]);
+  };
+
+  const handleSend = () => {
+    if (!input.trim()) return;
+    setMessages(prev => [...prev, { id: Math.random().toString(), text: input.trim(), isMine: true }]);
+    setInput("");
+    setShowNudge(false);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const shareIdentity = (chip: string) => {
+    setIdentityChips(prev => prev.filter(c => c !== chip));
+    const value = chip.includes("name") ? "Jamie" : "Brooklyn";
+    setMessages(prev => [...prev, { 
+      id: Math.random().toString(), 
+      text: `They shared their ${chip.split(" ")[1]} — it's ${value}.`, 
+      isSystem: true 
+    }]);
+  };
+
+  useEffect(() => {
+    const timer = setInterval(() => setTimeLeft(prev => Math.max(0, prev - 1)), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const isExpiringSoon = timeLeft < 3600;
+
+  return (
+    <main className="flex-1 flex flex-col h-[100dvh] relative">
+      {/* Top Bar */}
+      <header className="flex-none flex items-center justify-between px-6 md:px-8 py-5 z-20 sticky top-0 bg-background/50 backdrop-blur-md border-b border-border/10">
+        <div className="flex items-center gap-[2px] opacity-80 backdrop-blur-sm p-2 rounded-full border border-border/10 bg-surface/30">
+          <div className="w-5 h-5 rounded-full bg-[#F0EBE3] shadow-[0_0_10px_rgba(240,235,227,0.3)] z-10" />
+          <div className="w-5 h-5 rounded-full bg-accent-warm shadow-[0_0_10px_rgba(232,168,124,0.3)] -ml-1 mix-blend-screen" />
+        </div>
+        
+        <div className={`font-mono text-sm md:text-base tracking-widest ${isExpiringSoon ? 'text-accent drop-shadow-[0_0_5px_rgba(200,68,42,0.5)]' : 'text-text-secondary/70'}`}>
+          {formatTime(timeLeft)}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => router.push("/sunset")}
+            className="text-xs px-3 py-1.5 bg-surface border border-red-900/40 text-red-500 font-mono rounded hover:bg-red-900/20 transition-colors shadow-sm"
+          >
+            Dev: Expire
+          </button>
+          <button 
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-2 text-text-secondary hover:text-white transition-colors"
+          >
+            <Settings size={20} strokeWidth={1.5} />
+          </button>
+        </div>
+      </header>
+
+      {/* Message Thread */}
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 pb-4 pt-4 flex flex-col gap-[18px] hide-scrollbar z-10">
+        <AnimatePresence initial={false}>
+          {messages.map((msg) => (
+            <motion.div
+              key={msg.id}
+              initial={{ opacity: 0, y: 15, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ type: "spring", stiffness: 450, damping: 25 }}
+              className={`flex w-full ${msg.isSystem ? 'justify-center my-4' : msg.isMine ? 'justify-end' : 'justify-start'}`}
+            >
+              {msg.isSystem ? (
+                <div className="px-5 py-2 bg-surface/40 backdrop-blur-[2px] rounded-full border border-border/20 text-xs md:text-sm font-mono text-text-secondary shadow-sm">
+                  {msg.text}
+                </div>
+              ) : (
+                <div 
+                  className={`max-w-[85%] md:max-w-[65%] px-[22px] py-[15px] leading-[1.6] text-[17px] font-body shadow-md
+                    ${msg.isMine 
+                      ? 'bg-[#F0EBE3] text-[#0A0908] rounded-[24px] rounded-br-[4px]' 
+                      : 'bg-surface border border-border/40 text-text-primary rounded-[24px] rounded-bl-[4px]'}`}
+                >
+                  {msg.text}
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+
+        {/* AI Nudge */}
+        <AnimatePresence>
+          {showNudge && !nudgeDismissed && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="flex justify-center w-full my-6 sticky bottom-4 z-20"
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 50 }}
+              dragElastic={0.2}
+              onDragEnd={(e, info) => {
+                if (info.offset.y > 30 || info.velocity.y > 100) {
+                  setShowNudge(false);
+                  setNudgeDismissed(true);
+                }
+              }}
+            >
+              <div className="px-6 py-5 bg-surface/90 backdrop-blur-md rounded-2xl border border-border/40 text-center max-w-[85%] shadow-2xl cursor-grab active:cursor-grabbing">
+                <p className="font-display italic text-text-secondary/90 text-xl leading-snug mb-2">
+                  "You both mentioned feeling overlooked — what did that look like today?"
+                </p>
+                <div className="w-10 h-1 bg-border/40 rounded-full mx-auto mt-4" />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div ref={bottomRef} className="h-2 flex-none" />
+      </div>
+
+      {/* Input Area */}
+      <div className="flex-none p-4 md:px-8 pb-6 bg-gradient-to-t from-background via-background/90 to-transparent sticky bottom-0 z-20">
+        
+        {/* Progressive Identity Chips */}
+        {identityChips.length > 0 && messages.length > 1 && (
+          <div className="flex flex-wrap gap-2.5 mb-4 px-1">
+            <AnimatePresence>
+              {identityChips.map(chip => (
+                <motion.button
+                  key={chip}
+                  initial={{ opacity: 0, scale: 0.9, y: 5 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  onClick={() => shareIdentity(chip)}
+                  className="px-4 py-[6px] rounded-full bg-surface border border-border/50 text-xs font-mono text-text-secondary hover:text-white hover:border-white/50 transition-colors shadow-sm"
+                >
+                  {chip}
+                </motion.button>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+
+        {/* Input Container */}
+        <div className="flex items-end gap-3 bg-surface/80 backdrop-blur-lg border border-border/40 rounded-[28px] pl-6 pr-2 py-2 shadow-[0_0_20px_rgba(0,0,0,0.5)] focus-within:border-border transition-colors w-full">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a message..."
+            rows={1}
+            className="flex-1 bg-transparent resize-none outline-none border-none py-[10px] font-body text-[17px] text-white placeholder:text-text-secondary/40 self-center leading-snug"
+          />
+          <button 
+            onClick={handleSend}
+            disabled={!input.trim()}
+            className={`flex-none p-3.5 rounded-full transition-all duration-300 ${input.trim() ? 'bg-accent text-white scale-100 opacity-100 shadow-[0_0_15px_rgba(200,68,42,0.4)]' : 'bg-border/30 text-text-secondary/30 scale-95 opacity-50 pointer-events-none'}`}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14"></path>
+              <path d="m12 5 7 7-7 7"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <SettingsDrawer isOpen={showSettings} onClose={() => setShowSettings(false)} />
+    </main>
+  );
+}
