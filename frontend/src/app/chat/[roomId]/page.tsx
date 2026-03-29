@@ -131,8 +131,9 @@ export default function ChatPage() {
 
     console.log("[CHAT] effect started — roomId:", roomId);
 
-    Promise.all([getUserId(), getRoom(roomId), getMessages(roomId)])
-      .then(([uid, roomData, history]) => {
+    // Phase 1: connect to Supabase immediately — don't wait for history
+    Promise.all([getUserId(), getRoom(roomId)])
+      .then(([uid, roomData]) => {
         console.log(
           "[CHAT] Promise.all resolved — cancelled:",
           cancelled,
@@ -156,9 +157,15 @@ export default function ChatPage() {
           return;
         }
 
-        if (history && history.length > 0) {
-          setMessages(history);
-        }
+        // Phase 2: load history in parallel — channel is already live
+        getMessages(roomId)
+          .then((history) => {
+            if (cancelled) return;
+            if (history && history.length > 0) {
+              setMessages(history);
+            }
+          })
+          .catch((err) => console.error("[CHAT] Failed to load history:", err));
 
         console.log("[CHAT] creating channel:", roomData.supabaseChannel);
         const ch = supabase.channel(roomData.supabaseChannel, {

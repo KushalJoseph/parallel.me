@@ -115,13 +115,16 @@ async def get_messages(room_id: str, user_id: str = Depends(get_current_user_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid room ID format")
 
-    room = await rooms_collection.find_one({"_id": obj_id})
+    room = await rooms_collection.find_one(
+        {"_id": obj_id},
+        {"userAId": 1, "userBId": 1, "messages": 1},  # only fetch what we need
+    )
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-        
+
     if user_id not in [room["userAId"], room["userBId"]]:
         raise HTTPException(status_code=403, detail="Not a participant in this room")
-        
+
     return room.get("messages", [])
 
 @router.post("/{room_id}/messages")
@@ -131,16 +134,16 @@ async def add_message(room_id: str, message: MessageInput, user_id: str = Depend
         obj_id = ObjectId(room_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid room ID format")
-        
-    room = await rooms_collection.find_one({"_id": obj_id})
-    if not room or user_id not in [room["userAId"], room["userBId"]]:
-        raise HTTPException(status_code=403, detail="Not allowed")
-        
+
     new_msg = message.model_dump()
     new_msg["createdAt"] = datetime.now(timezone.utc)
-    
-    await rooms_collection.update_one(
-        {"_id": obj_id},
-        {"$push": {"messages": new_msg}}
+
+    # Auth check folded into the filter — one round-trip instead of two
+    result = await rooms_collection.update_one(
+        {"_id": obj_id, "$or": [{"userAId": user_id}, {"userBId": user_id}]},
+        {"$push": {"messages": new_msg}},
     )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
     return {"status": "success"}
