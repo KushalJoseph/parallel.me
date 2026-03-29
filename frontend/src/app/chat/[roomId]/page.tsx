@@ -31,6 +31,8 @@ export default function ChatPage() {
   ]);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [channel, setChannel] = useState<any>(null);
+  const [isChannelReady, setIsChannelReady] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -79,13 +81,26 @@ export default function ChatPage() {
           return;
         }
 
-        const ch = supabase.channel(roomData.supabaseChannel);
+        const ch = supabase.channel(roomData.supabaseChannel, {
+          config: { broadcast: { ack: true } },
+        });
         ch.on("broadcast", { event: "message" }, ({ payload }) => {
           setMessages((prev) => [...prev, payload]);
-        }).subscribe();
-
-        setChannel(ch);
-        activeChannel = ch;
+        }).subscribe((status) => {
+          if (cancelled) return;
+          if (status === "SUBSCRIBED") {
+            setChannel(ch);
+            setIsChannelReady(true);
+            activeChannel = ch;
+          } else if (
+            status === "CHANNEL_ERROR" ||
+            status === "TIMED_OUT" ||
+            status === "CLOSED"
+          ) {
+            setChannel(null);
+            setIsChannelReady(false);
+          }
+        });
 
         expirePoll = setInterval(async () => {
           try {
@@ -101,13 +116,16 @@ export default function ChatPage() {
 
     return () => {
       cancelled = true;
+      setChannel(null);
+      setIsChannelReady(false);
       if (activeChannel) supabase.removeChannel(activeChannel);
       if (expirePoll) clearInterval(expirePoll);
     };
   }, [roomId, router]);
 
-  const handleSend = () => {
-    if (!input.trim() || !channel || !myUserId) return;
+  const handleSend = async () => {
+    if (!input.trim() || !channel || !myUserId || !isChannelReady || isSending)
+      return;
 
     const payload = {
       id: Math.random().toString(),
@@ -115,10 +133,26 @@ export default function ChatPage() {
       senderId: myUserId,
     };
 
-    channel.send({ type: "broadcast", event: "message", payload });
-    setMessages((prev) => [...prev, payload]);
-    setInput("");
-    setShowNudge(false);
+    setIsSending(true);
+    try {
+      const result = await channel.send({
+        type: "broadcast",
+        event: "message",
+        payload,
+      });
+
+      if (result === "ok") {
+        setMessages((prev) => [...prev, payload]);
+        setInput("");
+        setShowNudge(false);
+      } else {
+        console.error("Failed to send broadcast message:", result);
+      }
+    } catch (error) {
+      console.error("Failed to send broadcast message:", error);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -128,9 +162,10 @@ export default function ChatPage() {
     }
   };
 
-  const shareIdentity = (chip: string) => {
+  const shareIdentity = async (chip: string) => {
+    if (!channel || !myUserId || !isChannelReady || isSending) return;
+
     setIdentityChips((prev) => prev.filter((c) => c !== chip));
-    if (!channel || !myUserId) return;
 
     // We do NOT use real user data to maintain anonymity logic for this prototype.
     const value = chip.includes("name") ? "Jamie" : "Brooklyn";
@@ -140,15 +175,32 @@ export default function ChatPage() {
       isSystem: true,
     };
 
-    channel.send({ type: "broadcast", event: "message", payload });
-    // Append locally exactly as it broadcasts
-    setMessages((prev) => [
-      ...prev,
-      {
-        ...payload,
-        text: `You shared your ${chip.split(" ")[1]} — it's ${value}.`,
-      },
-    ]);
+    setIsSending(true);
+    try {
+      const result = await channel.send({
+        type: "broadcast",
+        event: "message",
+        payload,
+      });
+
+      if (result === "ok") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            ...payload,
+            text: `You shared your ${chip.split(" ")[1]} — it's ${value}.`,
+          },
+        ]);
+      } else {
+        console.error("Failed to send identity share:", result);
+        setIdentityChips((prev) => [...prev, chip]);
+      }
+    } catch (error) {
+      console.error("Failed to send identity share:", error);
+      setIdentityChips((prev) => [...prev, chip]);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   useEffect(() => {
@@ -297,8 +349,8 @@ export default function ChatPage() {
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim()}
-            className={`flex-none p-3.5 rounded-full transition-all duration-300 ${input.trim() ? "bg-accent text-white scale-100 opacity-100 shadow-[0_0_15px_rgba(200,68,42,0.4)]" : "bg-border/30 text-text-secondary/30 scale-95 opacity-50 pointer-events-none"}`}
+            disabled={!input.trim() || !isChannelReady || isSending}
+            className={`flex-none p-3.5 rounded-full transition-all duration-300 ${input.trim() && isChannelReady && !isSending ? "bg-accent text-white scale-100 opacity-100 shadow-[0_0_15px_rgba(200,68,42,0.4)]" : "bg-border/30 text-text-secondary/30 scale-95 opacity-50 pointer-events-none"}`}
           >
             <svg
               width="20"
