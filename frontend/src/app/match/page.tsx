@@ -131,11 +131,9 @@ export default function MatchRevealPage() {
           <button
             onClick={handleEnterChat}
             disabled={!roomId}
-            className="group flex flex-col items-center gap-3 text-white transition-opacity disabled:opacity-50 cursor-pointer"
+            className="bg-accent hover:bg-accent/90 text-white px-10 py-5 rounded-full font-body text-lg md:text-xl font-medium tracking-wide transition-all shadow-[0_4px_25px_rgba(226,79,68,0.35)] hover:shadow-[0_6px_30px_rgba(226,79,68,0.5)] active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <div className="text-xl md:text-2xl font-body border-b border-text-secondary pb-2 group-hover:border-white transition-colors duration-300">
-              Enter the conversation <span className="ml-3 font-light text-2xl">→</span>
-            </div>
+            Enter the conversation <span className="ml-2 font-light text-2xl">→</span>
           </button>
         </motion.div>
 

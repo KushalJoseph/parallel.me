@@ -551,10 +551,10 @@ export default function ChatPage() {
               <button
                 onClick={handleConnect}
                 disabled={myConnected || connectLoading || !isChannelReady}
-                className={`px-3 py-1.5 rounded-full font-mono text-xs transition-colors border ${
+                className={`px-4 py-2 rounded-full font-mono text-xs font-medium transition-all ${
                   myConnected
-                    ? "bg-surface text-text-secondary/50 border-border/20 cursor-not-allowed"
-                    : "bg-green-950/30 text-green-400 border-green-800/50 hover:bg-green-900/40 hover:border-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.1)] hover:shadow-[0_0_15px_rgba(34,197,94,0.2)]"
+                    ? "bg-surface text-text-secondary/50 border border-border/20 cursor-not-allowed"
+                    : "bg-green-600 text-white hover:bg-green-500 shadow-[0_2px_12px_rgba(34,197,94,0.3)] hover:shadow-[0_4px_16px_rgba(34,197,94,0.4)] active:scale-[0.97]"
                 }`}
               >
                 {connectLoading ? "..." : myConnected ? "Waiting for other user..." : "Make Friend"}
@@ -566,7 +566,7 @@ export default function ChatPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowEndConfirm(true)}
-            className="text-xs px-3 py-1.5 bg-surface border border-red-900/40 text-red-500 font-mono rounded hover:bg-red-900/20 transition-colors shadow-sm"
+            className="text-xs px-3 py-1.5 bg-red-600 text-white font-mono font-medium rounded-lg hover:bg-red-500 transition-all shadow-[0_2px_10px_rgba(220,38,38,0.3)] active:scale-[0.97]"
           >
             End Chat
           </button>
@@ -668,7 +668,7 @@ export default function ChatPage() {
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
             rows={1}
-            className="flex-1 bg-transparent resize-none outline-none border-none py-[10px] font-body text-[17px] text-white placeholder:text-text-secondary/40 self-center leading-snug"
+            className="flex-1 bg-transparent resize-none outline-none border-none py-[10px] font-body text-[17px] text-text-primary placeholder:text-text-secondary/40 self-center leading-snug"
           />
           <button
             onClick={handleSend}
