@@ -463,7 +463,7 @@ export default function ChatPage() {
                     : "bg-green-950/30 text-green-400 border-green-800/50 hover:bg-green-900/40 hover:border-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.1)] hover:shadow-[0_0_15px_rgba(34,197,94,0.2)]"
                 }`}
               >
-                {connectLoading ? "..." : myConnected ? "Waiting for other user..." : "Connect"}
+                {connectLoading ? "..." : myConnected ? "Waiting for other user..." : "Make Friend"}
               </button>
             </>
           )}
