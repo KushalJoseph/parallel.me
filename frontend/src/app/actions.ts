@@ -169,3 +169,21 @@ export async function connectRoom(roomId: string) {
   }
   return res.json();
 }
+
+export async function deleteRoom(roomId: string) {
+  const token = await getAuthToken();
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/api/room/${roomId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status}`);
+  }
+  return res.json();
+}

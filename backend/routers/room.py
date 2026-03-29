@@ -199,3 +199,21 @@ async def connect_room(room_id: str, user_id: str = Depends(get_current_user_id)
         return {"isPermanent": True, "justConnected": True, "systemMsg": system_msg}
 
     return {"isPermanent": is_perm, "justConnected": False}
+
+@router.delete("/{room_id}")
+async def delete_room(room_id: str, user_id: str = Depends(get_current_user_id)):
+    from bson.objectid import ObjectId
+    try:
+        obj_id = ObjectId(room_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid room ID format")
+
+    room = await rooms_collection.find_one({"_id": obj_id})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+        
+    if user_id not in [room["userAId"], room["userBId"]]:
+        raise HTTPException(status_code=403, detail="Not a participant in this room")
+
+    await rooms_collection.delete_one({"_id": obj_id})
+    return {"status": "deleted"}

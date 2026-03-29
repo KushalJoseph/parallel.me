@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Settings } from "lucide-react";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { supabase } from "@/lib/supabase";
-import { getRoom, getUserId, getMessages, sendMessage, connectRoom } from "@/app/actions";
+import { getRoom, getUserId, getMessages, sendMessage, connectRoom, deleteRoom } from "@/app/actions";
 
 type Message = {
   id: string;
@@ -91,6 +91,53 @@ export default function ChatPage() {
   const [otherConnected, setOtherConnected] = useState(false);
   const [isPermanent, setIsPermanent] = useState(false);
   const [connectLoading, setConnectLoading] = useState(false);
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [isUserA, setIsUserA] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState("");
+  const suggestionIndexRef = useRef(0);
+
+  // Two distinct pools so each user sees different prompts
+  const promptsA = [
+    "What's something small that made you smile today?",
+    "If you could relive one moment from this week, which would it be?",
+    "What's a song that matches your mood right now?",
+    "What's something you've been overthinking lately?",
+    "If your day had a movie title, what would it be?",
+    "What's a compliment you received that stuck with you?",
+    "What's the last thing that genuinely surprised you?",
+    "If you could master any skill overnight, what would it be?",
+    "What does your ideal quiet evening look like?",
+    "What's something you wish people asked you about more?",
+    "What's a memory that always makes you feel warm?",
+    "If you could send a message to your future self, what would you say?",
+    "What's the bravest thing you've done recently?",
+    "What's a small act of kindness you witnessed lately?",
+    "What would you do if you had zero fear for a day?",
+  ];
+  const promptsB = [
+    "What's one thing that felt heavy on your mind today?",
+    "What's a place that feels like home to you, even if it isn't?",
+    "What's a show or book that changed how you see something?",
+    "What do you wish you had more time for?",
+    "What's the most interesting conversation you've had recently?",
+    "What's a tradition or habit that's uniquely yours?",
+    "What would your perfect weekend morning look like?",
+    "What's something you're quietly proud of?",
+    "If you could have dinner with anyone alive, who would it be?",
+    "What's a lesson you learned the hard way?",
+    "What does 'being understood' look like to you?",
+    "What's a dream you haven't told many people about?",
+    "What's something you believed as a kid that you still carry?",
+    "What's a question you wish someone would ask you?",
+    "What's one thing you'd change about how people connect today?",
+  ];
+
+  const rotateSuggestion = (userIsA?: boolean) => {
+    const useA = userIsA !== undefined ? userIsA : isUserA;
+    const pool = useA ? promptsA : promptsB;
+    suggestionIndexRef.current = (suggestionIndexRef.current + 1) % pool.length;
+    setAiSuggestion(pool[suggestionIndexRef.current]);
+  };
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -100,6 +147,19 @@ export default function ChatPage() {
     routerRef.current = router;
   });
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleEndChat = async () => {
+    if (!channel || !isChannelReady) return;
+    try {
+      // Broadcast to the other user that the chat has been ended
+      await channel.send({ type: "broadcast", event: "end_chat", payload: { endedBy: myUserId } });
+      // Delete from database
+      await deleteRoom(roomId);
+      router.push("/write");
+    } catch (err) {
+      console.error("Failed to end chat:", err);
+    }
+  };
 
   const handleConnect = async () => {
     if (myConnected || isPermanent || !isChannelReady) return;
@@ -180,9 +240,17 @@ export default function ChatPage() {
         }
 
         setMyUserId(uid);
-        setMyConnected(roomData.userAId === uid ? roomData.userAConnected : roomData.userBConnected);
-        setOtherConnected(roomData.userAId === uid ? roomData.userBConnected : roomData.userAConnected);
+        const userIsA = roomData.userAId === uid;
+        setIsUserA(userIsA);
+        setMyConnected(userIsA ? roomData.userAConnected : roomData.userBConnected);
+        setOtherConnected(userIsA ? roomData.userBConnected : roomData.userAConnected);
         setIsPermanent(roomData.isPermanent);
+
+        // Seed initial suggestion using a random starting index
+        const pool = userIsA ? promptsA : promptsB;
+        const startIdx = Math.floor(Math.random() * pool.length);
+        suggestionIndexRef.current = startIdx;
+        setAiSuggestion(pool[startIdx]);
         
         if (roomData.status === "expired") {
           console.log("[CHAT] room already expired — redirecting to /sunset");
@@ -220,6 +288,8 @@ export default function ChatPage() {
               if (prev.some(m => m.id === payload.id)) return prev;
               return [...prev, payload];
             });
+            // Rotate the AI suggestion on every incoming message
+            rotateSuggestion();
           });
 
           ch.on("broadcast", { event: "connect_clicked" }, ({ payload }) => {
@@ -238,6 +308,22 @@ export default function ChatPage() {
               return [...prev, payload.systemMsg];
             });
             playTone("receive");
+          });
+
+          ch.on("broadcast", { event: "end_chat" }, ({ payload }) => {
+            if (cancelled) return;
+            // The other user ended the chat — show a system message and redirect
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: "end-chat-" + Date.now(),
+                text: "The other user has ended this conversation.",
+                isSystem: true,
+              },
+            ]);
+            playTone("receive");
+            // Redirect after a short delay so they can read the message
+            setTimeout(() => { if (!cancelled) routerRef.current.push("/write"); }, 2500);
           });
 
           ch.subscribe((status) => {
@@ -341,6 +427,7 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, payload]);
     setInput("");
     setShowNudge(false);
+    rotateSuggestion();
     
     // Play send sound effect
     playTone("send");
@@ -403,6 +490,13 @@ export default function ChatPage() {
     );
     return () => clearInterval(timer);
   }, []);
+
+  // Rotate AI suggestion every 10 seconds
+  useEffect(() => {
+    if (!aiSuggestion) return; // don't start until seeded
+    const suggestionTimer = setInterval(() => rotateSuggestion(), 10000);
+    return () => clearInterval(suggestionTimer);
+  }, [isUserA, aiSuggestion]);
 
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -471,10 +565,10 @@ export default function ChatPage() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/sunset")}
+            onClick={() => setShowEndConfirm(true)}
             className="text-xs px-3 py-1.5 bg-surface border border-red-900/40 text-red-500 font-mono rounded hover:bg-red-900/20 transition-colors shadow-sm"
           >
-            Dev: Expire
+            End Chat
           </button>
           <button
             onClick={() => setShowSettings(!showSettings)}
@@ -516,31 +610,25 @@ export default function ChatPage() {
           ))}
         </AnimatePresence>
 
-        {/* AI Nudge */}
-        <AnimatePresence>
-          {showNudge && !nudgeDismissed && (
+        {/* AI Suggestion — rotates every 10s and on each message */}
+        <AnimatePresence mode="wait">
+          {aiSuggestion && (
             <motion.div
+              key={aiSuggestion}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9 }}
               className="flex justify-center w-full my-6 sticky bottom-4 z-20"
-              drag="y"
-              dragConstraints={{ top: 0, bottom: 50 }}
-              dragElastic={0.2}
-              onDragEnd={(e, info) => {
-                if (info.offset.y > 30 || info.velocity.y > 100) {
-                  setShowNudge(false);
-                  setNudgeDismissed(true);
-                }
-              }}
             >
-              <div className="px-6 py-5 bg-surface/90 backdrop-blur-md rounded-2xl border border-border/40 text-center max-w-[85%] shadow-2xl cursor-grab active:cursor-grabbing">
-                <p className="font-display italic text-text-secondary/90 text-xl leading-snug mb-2">
-                  "You both mentioned feeling overlooked — what did that look
-                  like today?"
+              <button
+                onClick={() => { setInput(aiSuggestion); textareaRef.current?.focus(); bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }}
+                className="px-6 py-5 bg-surface/90 backdrop-blur-md rounded-2xl border border-border/40 text-center max-w-[85%] shadow-2xl hover:border-accent-warm/40 transition-all duration-200 cursor-pointer group"
+              >
+                <p className="font-display italic text-text-secondary/90 group-hover:text-text-primary text-xl leading-snug mb-2 transition-colors">
+                  "{aiSuggestion}"
                 </p>
-                <div className="w-10 h-1 bg-border/40 rounded-full mx-auto mt-4" />
-              </div>
+                <span className="text-accent-warm/50 group-hover:text-accent-warm text-[10px] font-mono uppercase tracking-widest transition-colors">tap to use</span>
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -550,6 +638,7 @@ export default function ChatPage() {
 
       {/* Input Area */}
       <div className="flex-none p-4 md:px-8 pb-6 bg-gradient-to-t from-background via-background/90 to-transparent sticky bottom-0 z-20">
+
         {/* Progressive Identity Chips */}
         {identityChips.length > 0 && messages.length > 1 && (
           <div className="flex flex-wrap gap-2.5 mb-4 px-1">
@@ -607,6 +696,47 @@ export default function ChatPage() {
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
       />
+
+      {/* End Chat Confirmation Modal */}
+      <AnimatePresence>
+        {showEndConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setShowEndConfirm(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-surface border border-border/50 rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+            >
+              <h3 className="font-display text-lg text-text-primary mb-2">End this conversation?</h3>
+              <p className="text-sm text-text-secondary/70 font-body leading-relaxed mb-6">
+                This will permanently delete the chat and all its messages for both users. The other person will be notified. This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowEndConfirm(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-surface border border-border/50 text-text-secondary font-mono text-sm hover:text-text-primary hover:border-border transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { setShowEndConfirm(false); handleEndChat(); }}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-red-950/40 border border-red-900/50 text-red-400 font-mono text-sm hover:bg-red-900/40 hover:text-red-300 transition-colors"
+                >
+                  End Chat
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
