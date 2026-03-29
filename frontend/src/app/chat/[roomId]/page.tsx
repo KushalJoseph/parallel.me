@@ -224,9 +224,8 @@ export default function ChatPage() {
     <main className="flex-1 flex flex-col h-[100dvh] relative">
       {/* Top Bar */}
       <header className="flex-none flex items-center justify-between px-6 md:px-8 py-5 z-20 sticky top-0 bg-background/50 backdrop-blur-md border-b border-border/10">
-        <div className="flex items-center gap-[2px] opacity-80 backdrop-blur-sm p-2 rounded-full border border-border/10 bg-surface/30">
-          <div className="w-5 h-5 rounded-full bg-[#F0EBE3] shadow-[0_0_10px_rgba(240,235,227,0.3)] z-10" />
-          <div className="w-5 h-5 rounded-full bg-accent-warm shadow-[0_0_10px_rgba(232,168,124,0.3)] -ml-1 mix-blend-screen" />
+        <div className="flex items-center justify-start h-10 md:h-14 opacity-80 hover:opacity-100 transition-opacity">
+          <img src="/logo.png" alt="Parallel" className="h-full w-auto object-contain pointer-events-none" />
         </div>
 
         <div

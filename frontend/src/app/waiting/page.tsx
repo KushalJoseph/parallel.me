@@ -61,7 +61,12 @@ export default function WaitingPage() {
   }, [router, entryId]);
 
   return (
-    <main className="flex-1 flex flex-col items-center justify-center min-h-[100dvh]">
+    <main className="flex-1 flex flex-col items-center justify-center min-h-[100dvh] relative">
+      {/* Brand Logo Header */}
+      <div className="absolute top-8 left-1/2 -translate-x-1/2 h-12 md:h-16 opacity-70 pointer-events-none z-20">
+        <img src="/logo.png" alt="Parallel" className="h-full w-auto object-contain" />
+      </div>
+
       <div className="relative w-64 h-64 flex items-center justify-center z-10">
         <motion.div
           animate={isMatched ? { rotate: 0 } : { rotate: 360 }}
@@ -72,29 +77,29 @@ export default function WaitingPage() {
           <motion.div
             animate={isMatched ? { x: -25, scale: 1.15 } : { x: -50, scale: 1 }}
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
-            className="absolute shrink-0 w-[72px] h-[72px] rounded-full bg-text-primary shadow-[0_0_20px_rgba(240,235,227,0.4)]"
+            className="absolute shrink-0 w-[72px] h-[72px] rounded-full bg-text-primary shadow-[0_0_80px_rgba(226,79,68,0.7)]"
           />
           {/* Ghost shape (them) */}
           <motion.div
             animate={isMatched 
-              ? { x: 25, scale: 1.15, backgroundColor: "rgba(232,168,124,1)", borderColor: "rgba(232,168,124,1)" } // Turns to solid peach
-              : { x: 50, scale: 1, backgroundColor: "rgba(20,18,16,0)", borderColor: "rgba(240,235,227,0.3)" }
+              ? { x: 25, scale: 1.15, backgroundColor: "rgba(244,147,66,1)", borderColor: "rgba(244,147,66,1)" } // Turns to solid peach
+              : { x: 50, scale: 1, backgroundColor: "rgba(20,18,16,0)", borderColor: "rgba(44,33,28,0.4)" }
             }
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
-            className="absolute shrink-0 w-[72px] h-[72px] rounded-full border-2 backdrop-blur-sm shadow-[0_0_20px_rgba(232,168,124,0)]"
-            style={{ boxShadow: isMatched ? "0 0 20px rgba(232,168,124,0.4)" : undefined }}
+            className="absolute shrink-0 w-[72px] h-[72px] rounded-full border-2 backdrop-blur-sm shadow-[0_0_40px_rgba(244,147,66,0)]"
+            style={{ boxShadow: isMatched ? "0 0 100px rgba(244,147,66,0.9)" : undefined }}
           />
         </motion.div>
 
         {/* Flash effect when matched */}
         <AnimatePresence>
           {isMatched && (
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0.8 }}
-              animate={{ scale: 4, opacity: 0 }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              className="absolute w-32 h-32 bg-accent-warm rounded-full blur-[20px] mix-blend-screen pointer-events-none"
-            />
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0.9 }}
+                animate={{ scale: 4.5, opacity: 0 }}
+                transition={{ duration: 0.9, ease: "easeOut" }}
+                className="absolute w-32 h-32 bg-accent-warm rounded-full blur-[40px] mix-blend-screen pointer-events-none"
+              />
           )}
         </AnimatePresence>
       </div>

@@ -11,15 +11,15 @@ export default function LandingClient() {
     <main className="flex-1 flex flex-col items-center justify-center px-6 relative overflow-hidden min-h-[100dvh]">
 
       <div className="z-10 flex flex-col items-center text-center max-w-lg w-full mt-[-10vh]">
-        {/* Wordmark */}
-        <motion.h1
-          className="font-display italic text-3xl font-medium mb-16 tracking-wide text-text-primary"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
+        {/* Wordmark (Logo Image) */}
+        <motion.div
+           className="mb-14 h-32 md:h-48 flex justify-center w-full opacity-90"
+           initial={{ opacity: 0 }}
+           animate={{ opacity: 1 }}
+           transition={{ duration: 0.3 }}
         >
-          Parallel
-        </motion.h1>
+          <img src="/logo.png" alt="Parallel" className="h-full w-auto object-contain pointer-events-none drop-shadow-sm" />
+        </motion.div>
 
         {/* Tagline */}
         <div className="flex flex-wrap justify-center gap-x-[6px] gap-y-1 mb-24 max-w-[340px] md:max-w-md">
