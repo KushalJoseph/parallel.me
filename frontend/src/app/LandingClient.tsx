@@ -13,7 +13,7 @@ export default function LandingClient() {
       <div className="z-10 flex flex-col items-center text-center max-w-lg w-full mt-[-10vh]">
         {/* Wordmark (Logo Image) */}
         <motion.div
-           className="mb-14 h-32 md:h-48 flex justify-center w-full opacity-90"
+           className="mb-14 h-40 md:h-56 flex justify-center w-full opacity-90"
            initial={{ opacity: 0 }}
            animate={{ opacity: 1 }}
            transition={{ duration: 0.3 }}
@@ -48,7 +48,7 @@ export default function LandingClient() {
         >
           <Link
             href="/how-it-works"
-            className="bg-accent hover:bg-accent/90 text-white px-10 py-[18px] rounded-full font-body text-base font-medium tracking-wide transition-colors"
+            className="bg-accent hover:bg-accent/90 text-white px-14 py-5 rounded-full font-body text-xl font-medium tracking-wide transition-all shadow-[0_4px_25px_rgba(226,79,68,0.3)] hover:shadow-[0_6px_30px_rgba(226,79,68,0.45)] active:scale-[0.97]"
           >
             Begin
           </Link>

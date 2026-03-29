@@ -71,10 +71,10 @@ export function ConversationCard({
       transition={{ type: "spring", stiffness: 400, damping: 25 }}
       className={`w-full text-left px-5 py-4 rounded-xl border transition-colors cursor-pointer ${
         isPending
-          ? "bg-amber-950/30 border-amber-800/30 hover:border-amber-700/50"
+          ? "bg-accent-warm/10 border-accent-warm/30 hover:border-accent-warm/60"
           : isPermanent
-          ? "bg-green-950/20 border-green-800/40 hover:border-green-600/50"
-          : "bg-surface border-border/50 hover:border-accent-warm/50"
+          ? "bg-green-50 border-green-300/60 hover:border-green-400"
+          : "bg-white border-border hover:border-accent-warm/50"
       }`}
     >
       {/* Status dot + title */}

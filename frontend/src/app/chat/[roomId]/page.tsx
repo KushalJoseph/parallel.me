@@ -531,7 +531,7 @@ export default function ChatPage() {
             back
           </button>
           
-          <div className="flex items-center justify-start h-10 md:h-14 opacity-80 hover:opacity-100 transition-opacity">
+          <div className="flex items-center justify-start h-14 md:h-20 opacity-80 hover:opacity-100 transition-opacity">
             <img src="/logo.png" alt="Parallel" className="h-full w-auto object-contain pointer-events-none" />
           </div>
         </div>

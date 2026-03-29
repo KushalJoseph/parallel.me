@@ -68,7 +68,7 @@ export default function WaitingPage() {
   return (
     <main className="flex-1 flex flex-col items-center justify-center min-h-[100dvh] relative">
       {/* Brand Logo Header */}
-      <div className="absolute top-8 left-1/2 -translate-x-1/2 h-12 md:h-16 opacity-70 pointer-events-none z-20">
+      <div className="absolute top-8 left-1/2 -translate-x-1/2 h-16 md:h-24 opacity-70 pointer-events-none z-20">
         <img src="/logo.png" alt="Parallel" className="h-full w-auto object-contain" />
       </div>
 
