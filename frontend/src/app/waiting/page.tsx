@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { pollEntry } from "@/app/actions";
 
 const WAIT_TEXTS = [
   "Reading your wavelength...",
@@ -12,29 +13,52 @@ const WAIT_TEXTS = [
 
 export default function WaitingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const entryId = searchParams.get("entryId");
   const [textIndex, setTextIndex] = useState(0);
   const [isMatched, setIsMatched] = useState(false);
+  const mounted = useRef(true);
 
   useEffect(() => {
+    mounted.current = true;
+    
     // Cycle text every 2.5s
     const textInterval = setInterval(() => {
       setTextIndex(curr => (curr + 1) % WAIT_TEXTS.length);
     }, 2500);
 
-    // Simulate match after 5s
-    const matchTimeout = setTimeout(() => {
-      setIsMatched(true);
-      // Wait for snap animation then navigate to /match
-      setTimeout(() => {
-        router.push("/match");
-      }, 1200); // Wait 1.2s before transition
-    }, 5000);
+    // Poll backend every 5s
+    let pollInterval: NodeJS.Timeout;
+    
+    const checkMatch = async () => {
+      if (!entryId) return;
+      try {
+        const data = await pollEntry(entryId);
+        if (data.status === "matched" && mounted.current) {
+          setIsMatched(true);
+          clearInterval(pollInterval);
+          
+          // Wait for 1.2s visual flash before navigating
+          setTimeout(() => {
+            if (mounted.current) router.push(`/match?roomId=${data.roomId}`);
+          }, 1200);
+        }
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    };
+    
+    if (entryId) {
+      pollInterval = setInterval(checkMatch, 5000);
+      checkMatch(); // Check immediately on mount
+    }
 
     return () => {
+      mounted.current = false;
       clearInterval(textInterval);
-      clearTimeout(matchTimeout);
+      if (pollInterval) clearInterval(pollInterval);
     };
-  }, [router]);
+  }, [router, entryId]);
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center min-h-[100dvh]">

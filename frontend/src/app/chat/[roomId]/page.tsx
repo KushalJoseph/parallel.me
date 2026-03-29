@@ -1,25 +1,24 @@
 "use client";
 
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Settings } from "lucide-react";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
+import { supabase } from "@/lib/supabase";
+import { getRoom, getUserId } from "@/app/actions";
 
 type Message = {
   id: string;
   text: string;
-  isMine?: boolean;
+  senderId?: string;
   isSystem?: boolean;
 };
 
-const MOCK_MESSAGES = [
-  "I think the heaviest part is pretending everything is fine when it's just so loud.",
-  "Yeah I get that. It's exhausting having to perform.",
-  "It's nice to just say it out loud without someone trying to 'fix' it immediately."
-];
-
 export default function ChatPage() {
+  const params = useParams();
+  const roomId = params.roomId as string;
+  
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [timeLeft, setTimeLeft] = useState(23 * 3600 + 59 * 60 + 50);
@@ -27,6 +26,8 @@ export default function ChatPage() {
   const [showNudge, setShowNudge] = useState(false);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [identityChips, setIdentityChips] = useState(["Share first name", "Share city"]);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [channel, setChannel] = useState<any>(null);
   
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -59,18 +60,55 @@ export default function ChatPage() {
   }, [messages, nudgeDismissed, input]);
 
   useEffect(() => {
-    const t1 = setTimeout(() => injectMock(MOCK_MESSAGES[0]), 3000);
-    const t2 = setTimeout(() => injectMock(MOCK_MESSAGES[1]), 12000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
+    if (!roomId) return;
+    let activeChannel: any = null;
+    let expirePoll: any = null;
 
-  const injectMock = (text: string) => {
-    setMessages(prev => [...prev, { id: Math.random().toString(), text, isMine: false }]);
-  };
+    Promise.all([getUserId(), getRoom(roomId)])
+      .then(([uid, roomData]) => {
+        setMyUserId(uid);
+        if (roomData.status === "expired") {
+          router.push("/sunset");
+          return;
+        }
+
+        const ch = supabase.channel(roomData.supabaseChannel);
+        ch.on("broadcast", { event: "message" }, ({ payload }) => {
+          setMessages(prev => [...prev, payload]);
+        }).subscribe();
+        
+        setChannel(ch);
+        activeChannel = ch;
+
+        expirePoll = setInterval(async () => {
+          try {
+            const freshRoom = await getRoom(roomId);
+            if (freshRoom.status === "expired") {
+              clearInterval(expirePoll);
+              router.push("/sunset");
+            }
+          } catch (e) {}
+        }, 60000);
+      })
+      .catch(console.error);
+
+    return () => {
+      if (activeChannel) supabase.removeChannel(activeChannel);
+      if (expirePoll) clearInterval(expirePoll);
+    };
+  }, [roomId, router]);
 
   const handleSend = () => {
-    if (!input.trim()) return;
-    setMessages(prev => [...prev, { id: Math.random().toString(), text: input.trim(), isMine: true }]);
+    if (!input.trim() || !channel || !myUserId) return;
+    
+    const payload = { 
+      id: Math.random().toString(), 
+      text: input.trim(), 
+      senderId: myUserId 
+    };
+    
+    channel.send({ type: "broadcast", event: "message", payload });
+    setMessages(prev => [...prev, payload]);
     setInput("");
     setShowNudge(false);
   };
@@ -84,12 +122,19 @@ export default function ChatPage() {
 
   const shareIdentity = (chip: string) => {
     setIdentityChips(prev => prev.filter(c => c !== chip));
+    if (!channel || !myUserId) return;
+    
+    // We do NOT use real user data to maintain anonymity logic for this prototype.
     const value = chip.includes("name") ? "Jamie" : "Brooklyn";
-    setMessages(prev => [...prev, { 
+    const payload = { 
       id: Math.random().toString(), 
       text: `They shared their ${chip.split(" ")[1]} — it's ${value}.`, 
       isSystem: true 
-    }]);
+    };
+    
+    channel.send({ type: "broadcast", event: "message", payload });
+    // Append locally exactly as it broadcasts
+    setMessages(prev => [...prev, { ...payload, text: `You shared your ${chip.split(" ")[1]} — it's ${value}.` }]);
   };
 
   useEffect(() => {
@@ -144,7 +189,7 @@ export default function ChatPage() {
               initial={{ opacity: 0, y: 15, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ type: "spring", stiffness: 450, damping: 25 }}
-              className={`flex w-full ${msg.isSystem ? 'justify-center my-4' : msg.isMine ? 'justify-end' : 'justify-start'}`}
+              className={`flex w-full ${msg.isSystem ? 'justify-center my-4' : (msg.senderId === myUserId) ? 'justify-end' : 'justify-start'}`}
             >
               {msg.isSystem ? (
                 <div className="px-5 py-2 bg-surface/40 backdrop-blur-[2px] rounded-full border border-border/20 text-xs md:text-sm font-mono text-text-secondary shadow-sm">
@@ -153,7 +198,7 @@ export default function ChatPage() {
               ) : (
                 <div 
                   className={`max-w-[85%] md:max-w-[65%] px-[22px] py-[15px] leading-[1.6] text-[17px] font-body shadow-md
-                    ${msg.isMine 
+                    ${(msg.senderId === myUserId) 
                       ? 'bg-[#F0EBE3] text-[#0A0908] rounded-[24px] rounded-br-[4px]' 
                       : 'bg-surface border border-border/40 text-text-primary rounded-[24px] rounded-bl-[4px]'}`}
                 >

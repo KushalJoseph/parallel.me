@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from google import genai
 
 from auth import get_current_user_id
-from database import entries_collection
+from database import entries_collection, rooms_collection
 from models import Entry
 
 import os
@@ -169,3 +169,32 @@ async def submit_entry(req: EntryRequest, user_id: str = Depends(get_current_use
         return {"status": "matched", "roomId": str(room_id)}
 
     return {"status": "waiting", "entryId": str(entry_id)}
+
+@router.get("/{entry_id}")
+async def get_entry_status(entry_id: str, user_id: str = Depends(get_current_user_id)):
+    from bson.objectid import ObjectId
+    try:
+        obj_id = ObjectId(entry_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid entry ID format")
+
+    entry = await entries_collection.find_one({"_id": obj_id})
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    if entry.get("userId") != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to view this entry")
+
+    if not entry.get("matched"):
+        return {"status": "waiting"}
+
+    # If matched, find the room where this entry was involved
+    room = await rooms_collection.find_one({
+        "$or": [{"entryAId": str(entry_id)}, {"entryBId": str(entry_id)}]
+    })
+
+    if not room:
+        # Edge case: marked matched but room hasn't been created yet
+        return {"status": "waiting"}
+
+    return {"status": "matched", "roomId": str(room["_id"])}

@@ -3,17 +3,32 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-
-const ICEBREAKER = "What's the heaviest thing you're carrying today that nobody can see?";
-const WORDS = ICEBREAKER.split(" ");
+import { useSearchParams } from "next/navigation";
+import { getRoom } from "@/app/actions";
 
 export default function MatchRevealPage() {
+  const searchParams = useSearchParams();
+  const roomId = searchParams.get("roomId");
+  
   const [timeLeft, setTimeLeft] = useState({ h: 23, m: 59, s: 59 });
   const [showCTA, setShowCTA] = useState(false);
+  const [icebreakerWords, setIcebreakerWords] = useState<string[]>([]);
+  
+  useEffect(() => {
+    if (roomId) {
+      getRoom(roomId).then(data => {
+        if (data.status === "active" && data.icebreaker) {
+          setIcebreakerWords(data.icebreaker.split(" "));
+        }
+      }).catch(console.error);
+    }
+  }, [roomId]);
 
   useEffect(() => {
-    // Show CTA after the words finish animating (simulated as ~5 seconds)
-    const ctaWait = setTimeout(() => setShowCTA(true), 5000);
+    if (icebreakerWords.length === 0) return;
+    
+    // Show CTA after the words finish animating
+    const ctaWait = setTimeout(() => setShowCTA(true), icebreakerWords.length * 250 + 1500);
     
     // Simple mock countdown
     const timer = setInterval(() => {
@@ -30,7 +45,7 @@ export default function MatchRevealPage() {
       clearTimeout(ctaWait);
       clearInterval(timer);
     };
-  }, []);
+  }, [icebreakerWords]);
 
   const formatTime = (t: {h:number, m:number, s:number}) => {
     return `${t.h.toString().padStart(2, '0')}:${t.m.toString().padStart(2, '0')}:${t.s.toString().padStart(2, '0')}`;
@@ -63,7 +78,7 @@ export default function MatchRevealPage() {
 
         {/* Icebreaker */}
         <div className="flex flex-wrap justify-center gap-[0.4rem] gap-y-3 mb-20 px-2 lg:px-8">
-          {WORDS.map((word, i) => (
+          {icebreakerWords.map((word, i) => (
             <motion.span
               key={i}
               initial={{ opacity: 0, y: 10, filter: "blur(2px)" }}
@@ -98,7 +113,7 @@ export default function MatchRevealPage() {
           className={`transition-opacity ${showCTA ? 'pointer-events-auto' : 'pointer-events-none'}`}
         >
           <Link 
-            href="/chat/mock-room-id"
+            href={roomId ? `/chat/${roomId}` : "#"}
             className="group flex flex-col items-center gap-3 text-white transition-opacity"
           >
             <div className="text-xl md:text-2xl font-body border-b border-text-secondary pb-2 group-hover:border-white transition-colors duration-300">

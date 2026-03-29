@@ -4,9 +4,11 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Settings } from "lucide-react";
+import { submitEntry } from "@/app/actions";
 
 export default function WritePage() {
   const [text, setText] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
 
@@ -25,9 +27,24 @@ export default function WritePage() {
     }
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isReady) router.push("/waiting");
+    if (!isReady || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      const data = await submitEntry(text);
+      
+      if (data.status === "matched") {
+        router.push(`/match?roomId=${data.roomId}`);
+      } else {
+        router.push(`/waiting?entryId=${data.entryId}`);
+      }
+    } catch (err) {
+      console.error(err);
+      setIsSubmitting(false);
+      alert("Something went wrong. Please try again.");
+    }
   };
 
   return (
@@ -77,16 +94,17 @@ export default function WritePage() {
           </div>
 
           <AnimatePresence>
-            {isReady && (
+            {(isReady || isSubmitting) && (
               <motion.button
+                disabled={isSubmitting}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
                 type="submit"
-                className="whitespace-nowrap bg-accent hover:bg-accent/90 text-white px-8 py-3 rounded-full font-body font-medium transition-colors ml-auto shadow-[0_0_20px_rgba(200,68,42,0.2)]"
+                className="whitespace-nowrap bg-accent hover:bg-accent/90 disabled:opacity-50 text-white px-8 py-3 rounded-full font-body font-medium transition-colors ml-auto shadow-[0_0_20px_rgba(200,68,42,0.2)]"
               >
-                Find my parallel <span className="ml-1">→</span>
+                {isSubmitting ? "Searching..." : "Find my parallel"} <span className="ml-1">→</span>
               </motion.button>
             )}
           </AnimatePresence>

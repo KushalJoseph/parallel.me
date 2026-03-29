@@ -73,5 +73,7 @@ cover/
 .DS_Store
 
 # Logs
+# Logs
 logs/
 *.log
+server_log.txt

@@ -141,12 +141,11 @@ The `/waiting` screen runs an animated "searching" loop. While the animation pla
 **Strategy:** The backend does not push notifications. The frontend polls.
 
 ```ts
-// entryId comes from the query param
+// entryId comes from the query param (e.g., set via router when you receive "waiting")
 const poll = setInterval(async () => {
-  const res = await fetch(`${API_URL}/api/entry`, {
-    method: "POST",
+  const res = await fetch(`${API_URL}/api/entry/${entryId}`, {
+    method: "GET",
     headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ text: savedEntryText }),
   });
   const data = await res.json();
 
@@ -156,8 +155,6 @@ const poll = setInterval(async () => {
   }
 }, 5000); // poll every 5 seconds
 ```
-
-> Alternatively: re-submit the entry text every few seconds. The backend will match against any newly arrived entries since the last submission. This is simpler than adding a poll-by-entryId endpoint.
 
 Clean up the interval on component unmount (`useEffect` cleanup).
 
