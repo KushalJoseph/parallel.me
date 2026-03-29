@@ -18,17 +18,20 @@ type Message = {
 export default function ChatPage() {
   const params = useParams();
   const roomId = params.roomId as string;
-  
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [timeLeft, setTimeLeft] = useState(23 * 3600 + 59 * 60 + 50);
   const [showSettings, setShowSettings] = useState(false);
   const [showNudge, setShowNudge] = useState(false);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
-  const [identityChips, setIdentityChips] = useState(["Share first name", "Share city"]);
+  const [identityChips, setIdentityChips] = useState([
+    "Share first name",
+    "Share city",
+  ]);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [channel, setChannel] = useState<any>(null);
-  
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
@@ -40,7 +43,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 140)}px`;
     }
   }, [input]);
@@ -48,7 +51,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (nudgeDismissed) return;
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    
+
     // Simulate an AI whisper perfectly interrupting after 8s of absolute silence
     typingTimerRef.current = setTimeout(() => {
       if (messages.length > 0) setShowNudge(true);
@@ -64,8 +67,12 @@ export default function ChatPage() {
     let activeChannel: any = null;
     let expirePoll: any = null;
 
+    let cancelled = false;
+
     Promise.all([getUserId(), getRoom(roomId)])
       .then(([uid, roomData]) => {
+        if (cancelled) return;
+
         setMyUserId(uid);
         if (roomData.status === "expired") {
           router.push("/sunset");
@@ -74,9 +81,9 @@ export default function ChatPage() {
 
         const ch = supabase.channel(roomData.supabaseChannel);
         ch.on("broadcast", { event: "message" }, ({ payload }) => {
-          setMessages(prev => [...prev, payload]);
+          setMessages((prev) => [...prev, payload]);
         }).subscribe();
-        
+
         setChannel(ch);
         activeChannel = ch;
 
@@ -93,6 +100,7 @@ export default function ChatPage() {
       .catch(console.error);
 
     return () => {
+      cancelled = true;
       if (activeChannel) supabase.removeChannel(activeChannel);
       if (expirePoll) clearInterval(expirePoll);
     };
@@ -100,15 +108,15 @@ export default function ChatPage() {
 
   const handleSend = () => {
     if (!input.trim() || !channel || !myUserId) return;
-    
-    const payload = { 
-      id: Math.random().toString(), 
-      text: input.trim(), 
-      senderId: myUserId 
+
+    const payload = {
+      id: Math.random().toString(),
+      text: input.trim(),
+      senderId: myUserId,
     };
-    
+
     channel.send({ type: "broadcast", event: "message", payload });
-    setMessages(prev => [...prev, payload]);
+    setMessages((prev) => [...prev, payload]);
     setInput("");
     setShowNudge(false);
   };
@@ -121,24 +129,33 @@ export default function ChatPage() {
   };
 
   const shareIdentity = (chip: string) => {
-    setIdentityChips(prev => prev.filter(c => c !== chip));
+    setIdentityChips((prev) => prev.filter((c) => c !== chip));
     if (!channel || !myUserId) return;
-    
+
     // We do NOT use real user data to maintain anonymity logic for this prototype.
     const value = chip.includes("name") ? "Jamie" : "Brooklyn";
-    const payload = { 
-      id: Math.random().toString(), 
-      text: `They shared their ${chip.split(" ")[1]} — it's ${value}.`, 
-      isSystem: true 
+    const payload = {
+      id: Math.random().toString(),
+      text: `They shared their ${chip.split(" ")[1]} — it's ${value}.`,
+      isSystem: true,
     };
-    
+
     channel.send({ type: "broadcast", event: "message", payload });
     // Append locally exactly as it broadcasts
-    setMessages(prev => [...prev, { ...payload, text: `You shared your ${chip.split(" ")[1]} — it's ${value}.` }]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        ...payload,
+        text: `You shared your ${chip.split(" ")[1]} — it's ${value}.`,
+      },
+    ]);
   };
 
   useEffect(() => {
-    const timer = setInterval(() => setTimeLeft(prev => Math.max(0, prev - 1)), 1000);
+    const timer = setInterval(
+      () => setTimeLeft((prev) => Math.max(0, prev - 1)),
+      1000,
+    );
     return () => clearInterval(timer);
   }, []);
 
@@ -146,7 +163,7 @@ export default function ChatPage() {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
   const isExpiringSoon = timeLeft < 3600;
@@ -159,19 +176,21 @@ export default function ChatPage() {
           <div className="w-5 h-5 rounded-full bg-[#F0EBE3] shadow-[0_0_10px_rgba(240,235,227,0.3)] z-10" />
           <div className="w-5 h-5 rounded-full bg-accent-warm shadow-[0_0_10px_rgba(232,168,124,0.3)] -ml-1 mix-blend-screen" />
         </div>
-        
-        <div className={`font-mono text-sm md:text-base tracking-widest ${isExpiringSoon ? 'text-accent drop-shadow-[0_0_5px_rgba(200,68,42,0.5)]' : 'text-text-secondary/70'}`}>
+
+        <div
+          className={`font-mono text-sm md:text-base tracking-widest ${isExpiringSoon ? "text-accent drop-shadow-[0_0_5px_rgba(200,68,42,0.5)]" : "text-text-secondary/70"}`}
+        >
           {formatTime(timeLeft)}
         </div>
 
         <div className="flex items-center gap-3">
-          <button 
+          <button
             onClick={() => router.push("/sunset")}
             className="text-xs px-3 py-1.5 bg-surface border border-red-900/40 text-red-500 font-mono rounded hover:bg-red-900/20 transition-colors shadow-sm"
           >
             Dev: Expire
           </button>
-          <button 
+          <button
             onClick={() => setShowSettings(!showSettings)}
             className="p-2 text-text-secondary hover:text-white transition-colors"
           >
@@ -189,18 +208,20 @@ export default function ChatPage() {
               initial={{ opacity: 0, y: 15, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ type: "spring", stiffness: 450, damping: 25 }}
-              className={`flex w-full ${msg.isSystem ? 'justify-center my-4' : (msg.senderId === myUserId) ? 'justify-end' : 'justify-start'}`}
+              className={`flex w-full ${msg.isSystem ? "justify-center my-4" : msg.senderId === myUserId ? "justify-end" : "justify-start"}`}
             >
               {msg.isSystem ? (
                 <div className="px-5 py-2 bg-surface/40 backdrop-blur-[2px] rounded-full border border-border/20 text-xs md:text-sm font-mono text-text-secondary shadow-sm">
                   {msg.text}
                 </div>
               ) : (
-                <div 
+                <div
                   className={`max-w-[85%] md:max-w-[65%] px-[22px] py-[15px] leading-[1.6] text-[17px] font-body shadow-md
-                    ${(msg.senderId === myUserId) 
-                      ? 'bg-[#F0EBE3] text-[#0A0908] rounded-[24px] rounded-br-[4px]' 
-                      : 'bg-surface border border-border/40 text-text-primary rounded-[24px] rounded-bl-[4px]'}`}
+                    ${
+                      msg.senderId === myUserId
+                        ? "bg-[#F0EBE3] text-[#0A0908] rounded-[24px] rounded-br-[4px]"
+                        : "bg-surface border border-border/40 text-text-primary rounded-[24px] rounded-bl-[4px]"
+                    }`}
                 >
                   {msg.text}
                 </div>
@@ -229,7 +250,8 @@ export default function ChatPage() {
             >
               <div className="px-6 py-5 bg-surface/90 backdrop-blur-md rounded-2xl border border-border/40 text-center max-w-[85%] shadow-2xl cursor-grab active:cursor-grabbing">
                 <p className="font-display italic text-text-secondary/90 text-xl leading-snug mb-2">
-                  "You both mentioned feeling overlooked — what did that look like today?"
+                  "You both mentioned feeling overlooked — what did that look
+                  like today?"
                 </p>
                 <div className="w-10 h-1 bg-border/40 rounded-full mx-auto mt-4" />
               </div>
@@ -242,12 +264,11 @@ export default function ChatPage() {
 
       {/* Input Area */}
       <div className="flex-none p-4 md:px-8 pb-6 bg-gradient-to-t from-background via-background/90 to-transparent sticky bottom-0 z-20">
-        
         {/* Progressive Identity Chips */}
         {identityChips.length > 0 && messages.length > 1 && (
           <div className="flex flex-wrap gap-2.5 mb-4 px-1">
             <AnimatePresence>
-              {identityChips.map(chip => (
+              {identityChips.map((chip) => (
                 <motion.button
                   key={chip}
                   initial={{ opacity: 0, scale: 0.9, y: 5 }}
@@ -274,12 +295,21 @@ export default function ChatPage() {
             rows={1}
             className="flex-1 bg-transparent resize-none outline-none border-none py-[10px] font-body text-[17px] text-white placeholder:text-text-secondary/40 self-center leading-snug"
           />
-          <button 
+          <button
             onClick={handleSend}
             disabled={!input.trim()}
-            className={`flex-none p-3.5 rounded-full transition-all duration-300 ${input.trim() ? 'bg-accent text-white scale-100 opacity-100 shadow-[0_0_15px_rgba(200,68,42,0.4)]' : 'bg-border/30 text-text-secondary/30 scale-95 opacity-50 pointer-events-none'}`}
+            className={`flex-none p-3.5 rounded-full transition-all duration-300 ${input.trim() ? "bg-accent text-white scale-100 opacity-100 shadow-[0_0_15px_rgba(200,68,42,0.4)]" : "bg-border/30 text-text-secondary/30 scale-95 opacity-50 pointer-events-none"}`}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M5 12h14"></path>
               <path d="m12 5 7 7-7 7"></path>
             </svg>
@@ -287,7 +317,10 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <SettingsDrawer isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsDrawer
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
     </main>
   );
 }

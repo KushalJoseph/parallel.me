@@ -1,18 +1,15 @@
-
 import json
 import logging
-from datetime import datetime, timezone, timedelta
+import os
+from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from google import genai
-
 from auth import get_current_user_id
 from database import entries_collection, rooms_collection
+from fastapi import APIRouter, Depends, HTTPException
+from google import genai
 from models import Entry
-
-import os
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +46,9 @@ async def enrich_user_message(raw_text: str) -> tuple[str, str | None]:
         - enriched_content: enriched paragraph string, or None on failure
     """
     if not LAVA_SECRET_KEY:
-        logger.warning("LAVA_SECRET_KEY not set — skipping enrichment, embedding raw text.")
+        logger.warning(
+            "LAVA_SECRET_KEY not set — skipping enrichment, embedding raw text."
+        )
         return raw_text, None
 
     prompt = ENRICHMENT_SYSTEM_PROMPT.replace("{insert_user_text_here}", raw_text)
@@ -69,7 +68,9 @@ async def enrich_user_message(raw_text: str) -> tuple[str, str | None]:
             )
 
         if resp.status_code != 200:
-            logger.warning(f"Lava enrichment error {resp.status_code}: {resp.text} — falling back to raw text.")
+            logger.warning(
+                f"Lava enrichment error {resp.status_code}: {resp.text} — falling back to raw text."
+            )
             return raw_text, None
 
         data = resp.json()
@@ -81,7 +82,9 @@ async def enrich_user_message(raw_text: str) -> tuple[str, str | None]:
         parsed = json.loads(content)
         enriched = parsed.get("enriched_context", "").strip()
         if not enriched:
-            logger.warning("Lava JSON missing 'enriched_context' key — falling back to raw text.")
+            logger.warning(
+                "Lava JSON missing 'enriched_context' key — falling back to raw text."
+            )
             return raw_text, None
 
         return enriched, enriched
@@ -90,12 +93,14 @@ async def enrich_user_message(raw_text: str) -> tuple[str, str | None]:
         logger.warning(f"Lava returned malformed JSON: {e} — falling back to raw text.")
         return raw_text, None
     except Exception as e:
-        logger.warning(f"Lava enrichment request failed: {e} — falling back to raw text.")
+        logger.warning(
+            f"Lava enrichment request failed: {e} — falling back to raw text."
+        )
         return raw_text, None
 
 
 class EntryRequest(BaseModel):
-    text: str = Field(..., min_length=10, max_length=2000)
+    text: str = Field(..., min_length=10, max_length=200000)
 
 
 @router.post("")
@@ -111,7 +116,7 @@ async def submit_entry(req: EntryRequest, user_id: str = Depends(get_current_use
     # 2. Embed enriched text (falls back to raw text automatically if enrichment failed)
     try:
         response = client_ai.models.embed_content(
-            model='gemini-embedding-001',
+            model="gemini-embedding-001",
             contents=text_to_embed,
         )
         vector = response.embeddings[0].values
@@ -121,15 +126,17 @@ async def submit_entry(req: EntryRequest, user_id: str = Depends(get_current_use
     # 3. Store raw_content, enriched_content, and embedding
     new_entry = Entry(
         userId=user_id,
-        text=req.text,                       # kept for backward compatibility
+        text=req.text,  # kept for backward compatibility
         raw_content=req.text,
-        enriched_content=enriched_content,   # None if Lava call failed
+        enriched_content=enriched_content,  # None if Lava call failed
         embedding=vector,
         matched=False,
-        createdAt=datetime.now(timezone.utc)
+        createdAt=datetime.now(timezone.utc),
     )
 
-    result = await entries_collection.insert_one(new_entry.model_dump(by_alias=True, exclude={"id"}))
+    result = await entries_collection.insert_one(
+        new_entry.model_dump(by_alias=True, exclude={"id"})
+    )
     entry_id = result.inserted_id
 
     # 4. Vector search for a match
@@ -141,18 +148,10 @@ async def submit_entry(req: EntryRequest, user_id: str = Depends(get_current_use
                 "queryVector": vector,
                 "numCandidates": 50,
                 "limit": 1,
-                "filter": {
-                    "matched": False,
-                    "userId": {"$ne": user_id}
-                }
+                "filter": {"matched": False, "userId": {"$ne": user_id}},
             }
         },
-        {
-            "$project": {
-                "embedding": 0,
-                "score": {"$meta": "vectorSearchScore"}
-            }
-        }
+        {"$project": {"embedding": 0, "score": {"$meta": "vectorSearchScore"}}},
     ]
 
     match_cursor = entries_collection.aggregate(pipeline)
@@ -164,15 +163,20 @@ async def submit_entry(req: EntryRequest, user_id: str = Depends(get_current_use
     if matches and matches[0].get("score", 0) > 0.82:
         matched_entry = matches[0]
         from routers.room import create_room_internal
-        room_id = await create_room_internal(user_id, entry_id, matched_entry["userId"], matched_entry["_id"])
+
+        room_id = await create_room_internal(
+            user_id, entry_id, matched_entry["userId"], matched_entry["_id"]
+        )
 
         return {"status": "matched", "roomId": str(room_id)}
 
     return {"status": "waiting", "entryId": str(entry_id)}
 
+
 @router.get("/{entry_id}")
 async def get_entry_status(entry_id: str, user_id: str = Depends(get_current_user_id)):
     from bson.objectid import ObjectId
+
     try:
         obj_id = ObjectId(entry_id)
     except Exception:
@@ -189,9 +193,9 @@ async def get_entry_status(entry_id: str, user_id: str = Depends(get_current_use
         return {"status": "waiting"}
 
     # If matched, find the room where this entry was involved
-    room = await rooms_collection.find_one({
-        "$or": [{"entryAId": str(entry_id)}, {"entryBId": str(entry_id)}]
-    })
+    room = await rooms_collection.find_one(
+        {"$or": [{"entryAId": str(entry_id)}, {"entryBId": str(entry_id)}]}
+    )
 
     if not room:
         # Edge case: marked matched but room hasn't been created yet
