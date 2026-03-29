@@ -18,14 +18,31 @@ type User = {
   picture: string | null;
 };
 
+const SUGGESTIONS = [
+  {
+    category: "life",
+    text: "Everything looks fine from the outside this week. It really doesn't feel fine.",
+  },
+  {
+    category: "opinion",
+    text: "I genuinely think most people are one real conversation away from feeling less alone. We just never have it.",
+  },
+  {
+    category: "tonight",
+    text: "I've been staring at the sky tonight trying to remember constellation names from when I was a kid. I just want someone to look up with.",
+  },
+] as const;
+
 function SidebarContent({
   conversations,
   onCardClick,
   onClose,
+  onToggle,
 }: {
   conversations: ConversationItem[];
   onCardClick: (item: ConversationItem) => void;
   onClose?: () => void;
+  onToggle?: () => void;
 }) {
   return (
     <>
@@ -33,25 +50,32 @@ function SidebarContent({
         <h2 className="font-display italic text-lg text-text-primary/70">
           Your moments
         </h2>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="md:hidden p-1 text-text-secondary hover:text-white transition-colors"
-            aria-label="Close sidebar"
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
+        <div className="flex items-center gap-1">
+          {/* Desktop: collapse toggle lives here, inside the sidebar */}
+          {onToggle && (
+            <button
+              onClick={onToggle}
+              className="hidden md:flex p-1 text-text-secondary hover:text-white transition-colors"
+              aria-label="Collapse sidebar"
             >
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        )}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M3 12h18M3 6h18M3 18h18" />
+              </svg>
+            </button>
+          )}
+          {/* Mobile: close overlay */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="md:hidden p-1 text-text-secondary hover:text-white transition-colors"
+              aria-label="Close sidebar"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-4 flex flex-col gap-2.5">
@@ -169,6 +193,23 @@ export default function WritePage() {
     }
   };
 
+  const handleSuggestionClick = async (suggestionText: string) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const data = await submitEntry(suggestionText);
+      if (data.status === "matched") {
+        router.push(`/match?roomId=${data.roomId}`);
+      } else {
+        router.push(`/waiting?entryId=${data.entryId}`);
+      }
+    } catch (err) {
+      console.error(err);
+      setIsSubmitting(false);
+      alert("Something went wrong. Please try again.");
+    }
+  };
+
   const handleCardClick = (item: ConversationItem) => {
     if (item.type === "pending") {
       router.push(`/waiting?entryId=${item.entryId}`);
@@ -205,7 +246,7 @@ export default function WritePage() {
   );
 
   return (
-    <div className="flex h-[100dvh] w-full overflow-hidden">
+    <div className="relative flex h-[100dvh] w-full overflow-hidden">
       {/* ── Desktop sidebar — collapsible inline ── */}
       <motion.aside
         initial={false}
@@ -218,9 +259,29 @@ export default function WritePage() {
           <SidebarContent
             conversations={conversations}
             onCardClick={handleCardClick}
+            onToggle={() => setDesktopSidebarOpen(false)}
           />
         </div>
       </motion.aside>
+
+      {/* Desktop: reopen button — appears at top-left when sidebar is collapsed */}
+      <AnimatePresence>
+        {!desktopSidebarOpen && (
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => setDesktopSidebarOpen(true)}
+            className="hidden md:flex absolute top-6 left-4 z-10 p-1 text-text-secondary/50 hover:text-white transition-colors"
+            aria-label="Open sidebar"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M3 12h18M3 6h18M3 18h18" />
+            </svg>
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* ── Mobile sidebar — overlay ── */}
       <AnimatePresence>
@@ -264,14 +325,6 @@ export default function WritePage() {
               onClick={() => setMobileSidebarOpen(true)}
               className="md:hidden p-1 text-text-secondary hover:text-white transition-colors"
               aria-label="Open conversations"
-            >
-              <ToggleIcon />
-            </button>
-            {/* Desktop: collapse/expand sidebar */}
-            <button
-              onClick={() => setDesktopSidebarOpen((v) => !v)}
-              className="hidden md:flex p-1 text-text-secondary hover:text-white transition-colors"
-              aria-label="Toggle sidebar"
             >
               <ToggleIcon />
             </button>
@@ -348,6 +401,43 @@ export default function WritePage() {
               spellCheck="false"
             />
           </div>
+
+          {/* Suggestions — visible only when textarea is empty */}
+          <AnimatePresence>
+            {text.length === 0 && !isSubmitting && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="pb-6"
+              >
+                <p className="font-mono text-[11px] text-text-secondary/30 uppercase tracking-widest mb-3">
+                  or start with one of these
+                </p>
+                <div className="flex flex-col gap-2">
+                  {SUGGESTIONS.map((s, i) => (
+                    <motion.button
+                      key={i}
+                      type="button"
+                      onClick={() => handleSuggestionClick(s.text)}
+                      whileHover={{ x: 3 }}
+                      whileTap={{ scale: 0.98 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                      className="text-center px-4 py-3 rounded-xl border border-border/25 bg-surface/30 hover:bg-surface/60 hover:border-border/50 transition-colors cursor-pointer group"
+                    >
+                      <span className="block font-mono text-[10px] text-text-secondary/35 uppercase tracking-wider mb-1.5 group-hover:text-text-secondary/60 transition-colors">
+                        {s.category}
+                      </span>
+                      <span className="block font-body text-sm text-text-primary/50 leading-snug group-hover:text-text-primary/75 transition-colors">
+                        {s.text}
+                      </span>
+                    </motion.button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Footer actions */}
           <div className="pt-8 pb-4 flex flex-col sm:flex-row items-center justify-between gap-6">

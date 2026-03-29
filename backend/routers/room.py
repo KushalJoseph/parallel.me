@@ -66,6 +66,8 @@ async def create_room_internal(user_a_id: str, entry_a_id, user_b_id: str, entry
         entryAId=str(entry_a_id),
         entryBId=str(entry_b_id),
         icebreaker=icebreaker,
+        titleA=entry_a.get("title") if entry_a else None,
+        titleB=entry_b.get("title") if entry_b else None,
         supabaseChannel=supabase_channel,
         createdAt=datetime.now(timezone.utc),
         expired=False,

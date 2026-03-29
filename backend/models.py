@@ -37,6 +37,8 @@ class Room(BaseModel):
     entryAId: PyObjectId
     entryBId: PyObjectId
     icebreaker: str
+    titleA: Optional[str] = None   # user A's entry title, stored at room creation
+    titleB: Optional[str] = None   # user B's entry title, stored at room creation
     supabaseChannel: str
     messages: List[ChatMessage] = Field(default_factory=list)
     createdAt: datetime = Field(default_factory=get_utcnow)

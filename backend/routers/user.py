@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 
-from bson.objectid import ObjectId
 from fastapi import APIRouter, Depends
 
 from auth import get_current_user_id
@@ -50,20 +49,14 @@ async def get_user_conversations(user_id: str = Depends(get_current_user_id)):
 
     active = []
     for r in raw_rooms:
-        # Determine which entry belongs to this user
-        own_entry_id = r.get("entryAId") if r.get("userAId") == user_id else r.get("entryBId")
+        # Prefer the per-user title stored at room creation; fall back to icebreaker; then "Untitled"
+        if r.get("userAId") == user_id:
+            title = r.get("titleA")
+        else:
+            title = r.get("titleB")
 
-        title = "Untitled"
-        if own_entry_id:
-            try:
-                own_entry = await entries_collection.find_one(
-                    {"_id": ObjectId(own_entry_id)},
-                    {"title": 1},
-                )
-                if own_entry and own_entry.get("title"):
-                    title = own_entry["title"]
-            except Exception:
-                pass
+        if not title:
+            title = r.get("icebreaker") or "Untitled"
 
         icebreaker = r.get("icebreaker", "")
         icebreaker_preview = icebreaker[:60] + ("..." if len(icebreaker) > 60 else "")
