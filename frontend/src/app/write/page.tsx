@@ -18,20 +18,6 @@ type User = {
   picture: string | null;
 };
 
-const SUGGESTIONS = [
-  {
-    category: "life",
-    text: "Everything looks fine from the outside this week. It really doesn't feel fine.",
-  },
-  {
-    category: "opinion",
-    text: "I genuinely think most people are one real conversation away from feeling less alone. We just never have it.",
-  },
-  {
-    category: "tonight",
-    text: "I've been staring at the sky tonight trying to remember constellation names from when I was a kid. I just want someone to look up with.",
-  },
-] as const;
 
 function SidebarContent({
   conversations,
@@ -181,23 +167,6 @@ export default function WritePage() {
     try {
       const data = await submitEntry(text);
 
-      if (data.status === "matched") {
-        router.push(`/match?roomId=${data.roomId}`);
-      } else {
-        router.push(`/waiting?entryId=${data.entryId}`);
-      }
-    } catch (err) {
-      console.error(err);
-      setIsSubmitting(false);
-      alert("Something went wrong. Please try again.");
-    }
-  };
-
-  const handleSuggestionClick = async (suggestionText: string) => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      const data = await submitEntry(suggestionText);
       if (data.status === "matched") {
         router.push(`/match?roomId=${data.roomId}`);
       } else {
@@ -403,42 +372,6 @@ export default function WritePage() {
           </div>
 
           {/* Suggestions — visible only when textarea is empty */}
-          <AnimatePresence>
-            {text.length === 0 && !isSubmitting && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
-                className="pb-6"
-              >
-                <p className="font-mono text-[11px] text-text-secondary/30 uppercase tracking-widest mb-3">
-                  or start with one of these
-                </p>
-                <div className="flex flex-col gap-2">
-                  {SUGGESTIONS.map((s, i) => (
-                    <motion.button
-                      key={i}
-                      type="button"
-                      onClick={() => handleSuggestionClick(s.text)}
-                      whileHover={{ x: 3 }}
-                      whileTap={{ scale: 0.98 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                      className="text-center px-4 py-3 rounded-xl border border-border/25 bg-surface/30 hover:bg-surface/60 hover:border-border/50 transition-colors cursor-pointer group"
-                    >
-                      <span className="block font-mono text-[10px] text-text-secondary/35 uppercase tracking-wider mb-1.5 group-hover:text-text-secondary/60 transition-colors">
-                        {s.category}
-                      </span>
-                      <span className="block font-body text-sm text-text-primary/50 leading-snug group-hover:text-text-primary/75 transition-colors">
-                        {s.text}
-                      </span>
-                    </motion.button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           {/* Footer actions */}
           <div className="pt-8 pb-4 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="w-full sm:w-1/2 h-1 bg-surface rounded-full overflow-hidden relative">
