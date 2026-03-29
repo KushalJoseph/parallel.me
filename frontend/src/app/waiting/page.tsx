@@ -8,57 +8,62 @@ import { pollEntry } from "@/app/actions";
 const WAIT_TEXTS = [
   "Reading your wavelength...",
   "Searching for your parallel...",
-  "Someone is out there..."
+  "Someone is out there...",
 ];
 
 export default function WaitingPage() {
   const router = useRouter();
+  const routerRef = useRef(router);
+  useEffect(() => {
+    routerRef.current = router;
+  });
+
   const searchParams = useSearchParams();
   const entryId = searchParams.get("entryId");
   const [textIndex, setTextIndex] = useState(0);
   const [isMatched, setIsMatched] = useState(false);
-  const mounted = useRef(true);
 
   useEffect(() => {
-    mounted.current = true;
-    
-    // Cycle text every 2.5s
+    let cancelled = false;
+
+    // Cycle text every 2.5s — independent of polling
     const textInterval = setInterval(() => {
-      setTextIndex(curr => (curr + 1) % WAIT_TEXTS.length);
+      setTextIndex((curr) => (curr + 1) % WAIT_TEXTS.length);
     }, 2500);
 
-    // Poll backend every 5s
     let pollInterval: NodeJS.Timeout;
-    
+
     const checkMatch = async () => {
-      if (!entryId) return;
+      if (cancelled) return;
       try {
-        const data = await pollEntry(entryId);
-        if (data.status === "matched" && mounted.current) {
+        const data = await pollEntry(entryId!);
+        if (data.status === "matched" && !cancelled) {
           setIsMatched(true);
           clearInterval(pollInterval);
-          
-          // Wait for 1.2s visual flash before navigating
+          // Wait for the visual flash to play before navigating
           setTimeout(() => {
-            if (mounted.current) router.push(`/match?roomId=${data.roomId}`);
+            if (!cancelled)
+              routerRef.current.push(`/match?roomId=${data.roomId}`);
           }, 1200);
         }
       } catch (err) {
         console.error("Polling error:", err);
       }
     };
-    
+
     if (entryId) {
+      // Set the interval first so pollInterval is defined before checkMatch's
+      // await resolves and tries to clearInterval it on an immediate match.
       pollInterval = setInterval(checkMatch, 5000);
-      checkMatch(); // Check immediately on mount
+      checkMatch();
     }
 
     return () => {
-      mounted.current = false;
+      cancelled = true;
       clearInterval(textInterval);
-      if (pollInterval) clearInterval(pollInterval);
+      clearInterval(pollInterval);
     };
-  }, [router, entryId]);
+  }, [entryId]); // router intentionally omitted — accessed via routerRef
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center min-h-[100dvh] relative">
@@ -67,10 +72,34 @@ export default function WaitingPage() {
         <img src="/logo.png" alt="Parallel" className="h-full w-auto object-contain" />
       </div>
 
+      {/* Back button */}
+      <button
+        onClick={() => router.push("/write")}
+        className="absolute top-6 left-6 flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors font-mono text-sm"
+        aria-label="Back to write"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        >
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
+        back
+      </button>
+
       <div className="relative w-64 h-64 flex items-center justify-center z-10">
         <motion.div
           animate={isMatched ? { rotate: 0 } : { rotate: 360 }}
-          transition={isMatched ? { duration: 0.5, type: "spring" } : { duration: 8, ease: "linear", repeat: Infinity }}
+          transition={
+            isMatched
+              ? { duration: 0.5, type: "spring" }
+              : { duration: 8, ease: "linear", repeat: Infinity }
+          }
           className="absolute inset-0 flex items-center justify-center"
         >
           {/* User shape (solid white) */}
@@ -91,7 +120,7 @@ export default function WaitingPage() {
           />
         </motion.div>
 
-        {/* Flash effect when matched */}
+        {/* Flash bloom when matched */}
         <AnimatePresence>
           {isMatched && (
               <motion.div

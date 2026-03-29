@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -99,6 +100,51 @@ async def enrich_user_message(raw_text: str) -> tuple[str, str | None]:
         return raw_text, None
 
 
+TITLE_SYSTEM_PROMPT = (
+    "Give a very short 2-5 word evocative title capturing the emotional core of the following text. "
+    "Return ONLY the title, no quotes, no periods."
+)
+
+
+async def generate_entry_title(raw_text: str) -> str:
+    """
+    Calls Lava (gpt-4o-mini) to produce a 2-5 word title from raw_text.
+    Returns the title string, or "Untitled" on any failure.
+    """
+    if not LAVA_SECRET_KEY:
+        logger.warning("LAVA_SECRET_KEY not set — using 'Untitled' as title.")
+        return "Untitled"
+
+    prompt = f"{TITLE_SYSTEM_PROMPT}\n\nTEXT: {raw_text}"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                LAVA_ENDPOINT,
+                headers={
+                    "Authorization": f"Bearer {LAVA_SECRET_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+
+        if resp.status_code != 200:
+            logger.warning(f"Lava title error {resp.status_code} — using 'Untitled'.")
+            return "Untitled"
+
+        data = resp.json()
+        title = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        title = title.strip('"').strip("'").strip(".")
+        return title if title else "Untitled"
+
+    except Exception as e:
+        logger.warning(f"Lava title request failed: {e} — using 'Untitled'.")
+        return "Untitled"
+
+
 class EntryRequest(BaseModel):
     text: str = Field(..., min_length=10, max_length=200000)
 
@@ -110,8 +156,11 @@ async def submit_entry(req: EntryRequest, user_id: str = Depends(get_current_use
         raise HTTPException(status_code=500, detail="Gemini API not configured")
     client_ai = genai.Client(api_key=gemini_key)
 
-    # 1. Enrich raw text via Lava before embedding
-    text_to_embed, enriched_content = await enrich_user_message(req.text)
+    # 1. Enrich raw text via Lava before embedding, and generate title concurrently
+    (text_to_embed, enriched_content), title = await asyncio.gather(
+        enrich_user_message(req.text),
+        generate_entry_title(req.text),
+    )
 
     # 2. Embed enriched text (falls back to raw text automatically if enrichment failed)
     try:
@@ -123,7 +172,7 @@ async def submit_entry(req: EntryRequest, user_id: str = Depends(get_current_use
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding failed: {str(e)}")
 
-    # 3. Store raw_content, enriched_content, and embedding
+    # 3. Store raw_content, enriched_content, embedding, and title
     new_entry = Entry(
         userId=user_id,
         text=req.text,  # kept for backward compatibility
@@ -131,6 +180,7 @@ async def submit_entry(req: EntryRequest, user_id: str = Depends(get_current_use
         enriched_content=enriched_content,  # None if Lava call failed
         embedding=vector,
         matched=False,
+        title=title,
         createdAt=datetime.now(timezone.utc),
     )
 

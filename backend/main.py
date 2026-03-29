@@ -16,11 +16,13 @@ def read_root():
 from routers.entry import router as entry_router
 from routers.room import router as room_router
 from routers.auth_web import router as auth_web_router
+from routers.user import router as user_router
 from jobs import start_jobs
 
 app.include_router(entry_router)
 app.include_router(room_router)
 app.include_router(auth_web_router)
+app.include_router(user_router)
 
 @app.on_event("startup")
 async def startup_event():

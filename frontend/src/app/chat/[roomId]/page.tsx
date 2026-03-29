@@ -6,13 +6,68 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Settings } from "lucide-react";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { supabase } from "@/lib/supabase";
-import { getRoom, getUserId } from "@/app/actions";
+import { getRoom, getUserId, getMessages, sendMessage, connectRoom } from "@/app/actions";
 
 type Message = {
   id: string;
   text: string;
   senderId?: string;
   isSystem?: boolean;
+};
+
+// Singleton audio context to respect browser limits and policies
+let audioCtx: AudioContext | null = null;
+
+// Programmatically generate a lightweight notification sound using the Web Audio API
+const playTone = (type: "send" | "receive") => {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    
+    if (!audioCtx) audioCtx = new Ctx();
+    
+    // Resume context if browser autoplay policy suspended it initially
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume().catch(() => {});
+    }
+    if (audioCtx.state === "suspended") return;
+
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+
+    if (type === "send") {
+      // Soft ascending bloop for sending
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(400, now);
+      osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+      
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.1, now + 0.05);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } else {
+      // Gentle pop for receiving
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+      
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.2, now + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      
+      osc.start(now);
+      osc.stop(now + 0.2);
+    }
+  } catch (err) {
+    console.warn("Audio playback failed", err);
+  }
 };
 
 export default function ChatPage() {
@@ -32,12 +87,44 @@ export default function ChatPage() {
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [channel, setChannel] = useState<any>(null);
   const [isChannelReady, setIsChannelReady] = useState(false);
-  const [isSending, setIsSending] = useState(false);
+  const [myConnected, setMyConnected] = useState(false);
+  const [otherConnected, setOtherConnected] = useState(false);
+  const [isPermanent, setIsPermanent] = useState(false);
+  const [connectLoading, setConnectLoading] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
+  const routerRef = useRef(router);
+  useEffect(() => {
+    routerRef.current = router;
+  });
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleConnect = async () => {
+    if (myConnected || isPermanent || !isChannelReady) return;
+    setConnectLoading(true);
+    try {
+      const res = await connectRoom(roomId);
+      
+      setMyConnected(true);
+      if (res.isPermanent) {
+        setIsPermanent(true);
+      }
+      
+      if (res.justConnected) {
+        channel.send({ type: "broadcast", event: "mutual_connect", payload: { systemMsg: res.systemMsg } }).catch(console.error);
+        setMessages((prev) => [...prev, res.systemMsg]);
+        playTone("receive");
+      } else {
+        channel.send({ type: "broadcast", event: "connect_clicked", payload: { senderId: myUserId } }).catch(console.error);
+      }
+    } catch (err) {
+      console.error("Failed to connect:", err);
+    } finally {
+      setConnectLoading(false);
+    }
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -71,61 +158,176 @@ export default function ChatPage() {
 
     let cancelled = false;
 
+    console.log("[CHAT] effect started — roomId:", roomId);
+
+    // Phase 1: connect to Supabase immediately — don't wait for history
     Promise.all([getUserId(), getRoom(roomId)])
       .then(([uid, roomData]) => {
-        if (cancelled) return;
+        console.log(
+          "[CHAT] Promise.all resolved — cancelled:",
+          cancelled,
+          "uid:",
+          uid,
+          "supabaseChannel:",
+          roomData?.supabaseChannel,
+          "roomStatus:",
+          roomData?.status,
+        );
 
-        setMyUserId(uid);
-        if (roomData.status === "expired") {
-          router.push("/sunset");
+        if (cancelled) {
+          console.log("[CHAT] cancelled before setup — bailing out");
           return;
         }
 
-        const ch = supabase.channel(roomData.supabaseChannel, {
-          config: { broadcast: { ack: true } },
-        });
-        ch.on("broadcast", { event: "message" }, ({ payload }) => {
-          setMessages((prev) => [...prev, payload]);
-        }).subscribe((status) => {
+        setMyUserId(uid);
+        setMyConnected(roomData.userAId === uid ? roomData.userAConnected : roomData.userBConnected);
+        setOtherConnected(roomData.userAId === uid ? roomData.userBConnected : roomData.userAConnected);
+        setIsPermanent(roomData.isPermanent);
+        
+        if (roomData.status === "expired") {
+          console.log("[CHAT] room already expired — redirecting to /sunset");
+          routerRef.current.push("/sunset");
+          return;
+        }
+
+        // Phase 2: load history in parallel — channel is already live
+        getMessages(roomId)
+          .then((history) => {
+            if (cancelled) return;
+            if (history && history.length > 0) {
+              setMessages(history);
+            }
+          })
+          .catch((err) => console.error("[CHAT] Failed to load history:", err));
+
+        // Helper: wire up listeners on a channel object and subscribe
+        const setupChannel = (channelName: string, attempt = 1) => {
           if (cancelled) return;
-          if (status === "SUBSCRIBED") {
-            setChannel(ch);
-            setIsChannelReady(true);
-            activeChannel = ch;
-          } else if (
-            status === "CHANNEL_ERROR" ||
-            status === "TIMED_OUT" ||
-            status === "CLOSED"
-          ) {
-            setChannel(null);
-            setIsChannelReady(false);
-          }
-        });
+          console.log(`[CHAT] creating channel (attempt ${attempt}):`, channelName);
+
+          const ch = supabase.channel(channelName, {
+            config: { broadcast: { ack: true } }
+          });
+          activeChannel = ch;
+
+          ch.on("broadcast", { event: "message" }, ({ payload }) => {
+            if (cancelled) return;
+            console.log("[CHAT] ← incoming broadcast message:", payload);
+            if (payload.senderId !== uid && !payload.isSystem) {
+              playTone("receive");
+            }
+            setMessages((prev) => {
+              if (prev.some(m => m.id === payload.id)) return prev;
+              return [...prev, payload];
+            });
+          });
+
+          ch.on("broadcast", { event: "connect_clicked" }, ({ payload }) => {
+            if (cancelled) return;
+            if (payload.senderId !== uid) {
+              setOtherConnected(true);
+            }
+          });
+
+          ch.on("broadcast", { event: "mutual_connect" }, ({ payload }) => {
+            if (cancelled) return;
+            setOtherConnected(true);
+            setIsPermanent(true);
+            setMessages((prev) => {
+              if (prev.some(m => m.id === payload.systemMsg.id)) return prev;
+              return [...prev, payload.systemMsg];
+            });
+            playTone("receive");
+          });
+
+          ch.subscribe((status) => {
+            console.log("[CHAT] subscribe status:", status, "| cancelled:", cancelled);
+            if (cancelled) {
+              console.log("[CHAT] subscribe callback fired but cancelled — ignoring status:", status);
+              return;
+            }
+            if (status === "SUBSCRIBED") {
+              console.log("[CHAT] ✓ channel SUBSCRIBED — ready to send/receive");
+              setChannel(ch);
+              setIsChannelReady(true);
+            } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+              console.warn(`[CHAT] ✗ channel error — status: ${status}, attempt: ${attempt}`);
+              // Retry: remove the stale channel, wait for Supabase cleanup, then re-create
+              if (attempt < 4 && !cancelled) {
+                supabase.removeChannel(ch);
+                activeChannel = null;
+                const delay = attempt * 500;
+                console.log(`[CHAT] retrying in ${delay}ms...`);
+                setTimeout(() => setupChannel(channelName, attempt + 1), delay);
+              } else {
+                setChannel(null);
+                setIsChannelReady(false);
+              }
+            } else if (status === "CLOSED") {
+              setChannel(null);
+              setIsChannelReady(false);
+            }
+          });
+        };
+
+        setupChannel(roomData.supabaseChannel);
 
         expirePoll = setInterval(async () => {
           try {
             const freshRoom = await getRoom(roomId);
             if (freshRoom.status === "expired") {
+              console.log(
+                "[CHAT] room expired (poll) — redirecting to /sunset",
+              );
               clearInterval(expirePoll);
-              router.push("/sunset");
+              routerRef.current.push("/sunset");
             }
           } catch (e) {}
         }, 60000);
       })
-      .catch(console.error);
+      .catch((err) => {
+        console.error("[CHAT] Promise.all failed:", err);
+      });
 
     return () => {
+      console.log(
+        "[CHAT] cleanup — activeChannel:",
+        activeChannel ? "exists" : "null",
+        "| setting cancelled=true",
+      );
       cancelled = true;
       setChannel(null);
       setIsChannelReady(false);
       if (activeChannel) supabase.removeChannel(activeChannel);
       if (expirePoll) clearInterval(expirePoll);
     };
-  }, [roomId, router]);
+  }, [roomId]); // router intentionally omitted — accessed via routerRef
 
-  const handleSend = async () => {
-    if (!input.trim() || !channel || !myUserId || !isChannelReady || isSending)
+  const handleSend = () => {
+    console.log(
+      "[CHAT] handleSend called — guards: input:",
+      !!input.trim(),
+      "| channel:",
+      !!channel,
+      "| myUserId:",
+      !!myUserId,
+      "| isChannelReady:",
+      isChannelReady,
+    );
+
+    if (!input.trim() || !channel || !myUserId || !isChannelReady) {
+      console.warn(
+        "[CHAT] handleSend blocked — failing guard. input:",
+        !!input.trim(),
+        "channel:",
+        !!channel,
+        "myUserId:",
+        !!myUserId,
+        "isChannelReady:",
+        isChannelReady,
+      );
       return;
+    }
 
     const payload = {
       id: Math.random().toString(),
@@ -133,26 +335,22 @@ export default function ChatPage() {
       senderId: myUserId,
     };
 
-    setIsSending(true);
-    try {
-      const result = await channel.send({
-        type: "broadcast",
-        event: "message",
-        payload,
-      });
+    console.log("[CHAT] → sending payload:", payload);
 
-      if (result === "ok") {
-        setMessages((prev) => [...prev, payload]);
-        setInput("");
-        setShowNudge(false);
-      } else {
-        console.error("Failed to send broadcast message:", result);
-      }
-    } catch (error) {
-      console.error("Failed to send broadcast message:", error);
-    } finally {
-      setIsSending(false);
-    }
+    // Optimistic update — show immediately, broadcast in background
+    setMessages((prev) => [...prev, payload]);
+    setInput("");
+    setShowNudge(false);
+    
+    // Play send sound effect
+    playTone("send");
+
+    channel
+      .send({ type: "broadcast", event: "message", payload })
+      .then((result: unknown) => console.log("[CHAT] send result:", result))
+      .catch((err: unknown) => console.error("[CHAT] Broadcast failed:", err));
+
+    sendMessage(roomId, payload).catch((err: unknown) => console.error("Failed to persist message", err));
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -162,45 +360,40 @@ export default function ChatPage() {
     }
   };
 
-  const shareIdentity = async (chip: string) => {
-    if (!channel || !myUserId || !isChannelReady || isSending) return;
+  const shareIdentity = (chip: string) => {
+    if (!channel || !myUserId || !isChannelReady) return;
 
     setIdentityChips((prev) => prev.filter((c) => c !== chip));
 
     // We do NOT use real user data to maintain anonymity logic for this prototype.
     const value = chip.includes("name") ? "Jamie" : "Brooklyn";
     const payload = {
-      id: Math.random().toString(),
+      id: crypto.randomUUID(),
       text: `They shared their ${chip.split(" ")[1]} — it's ${value}.`,
       isSystem: true,
     };
 
-    setIsSending(true);
-    try {
-      const result = await channel.send({
-        type: "broadcast",
-        event: "message",
-        payload,
+    // Show sender's local version immediately
+    setMessages((prev) => [
+      ...prev,
+      {
+        ...payload,
+        text: `You shared your ${chip.split(" ")[1]} — it's ${value}.`,
+      },
+    ]);
+    
+    // Play sound for sharing an identity chip as well
+    playTone("send");
+
+    channel
+      .send({ type: "broadcast", event: "message", payload })
+      .catch((err: unknown) => {
+        console.error("Failed to send identity share:", err);
+        setIdentityChips((prev) => [...prev, chip]);
       });
 
-      if (result === "ok") {
-        setMessages((prev) => [
-          ...prev,
-          {
-            ...payload,
-            text: `You shared your ${chip.split(" ")[1]} — it's ${value}.`,
-          },
-        ]);
-      } else {
-        console.error("Failed to send identity share:", result);
-        setIdentityChips((prev) => [...prev, chip]);
-      }
-    } catch (error) {
-      console.error("Failed to send identity share:", error);
-      setIdentityChips((prev) => [...prev, chip]);
-    } finally {
-      setIsSending(false);
-    }
+    // Persist system message
+    sendMessage(roomId, payload).catch(console.error);
   };
 
   useEffect(() => {
@@ -224,14 +417,56 @@ export default function ChatPage() {
     <main className="flex-1 flex flex-col h-[100dvh] relative">
       {/* Top Bar */}
       <header className="flex-none flex items-center justify-between px-6 md:px-8 py-5 z-20 sticky top-0 bg-background/50 backdrop-blur-md border-b border-border/10">
-        <div className="flex items-center justify-start h-10 md:h-14 opacity-80 hover:opacity-100 transition-opacity">
-          <img src="/logo.png" alt="Parallel" className="h-full w-auto object-contain pointer-events-none" />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push("/write")}
+            className="flex items-center gap-1 text-text-secondary hover:text-text-primary transition-colors font-mono text-xs"
+            aria-label="Back to write"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            back
+          </button>
+          
+          <div className="flex items-center justify-start h-10 md:h-14 opacity-80 hover:opacity-100 transition-opacity">
+            <img src="/logo.png" alt="Parallel" className="h-full w-auto object-contain pointer-events-none" />
+          </div>
         </div>
 
-        <div
-          className={`font-mono text-sm md:text-base tracking-widest ${isExpiringSoon ? "text-accent drop-shadow-[0_0_5px_rgba(200,68,42,0.5)]" : "text-text-secondary/70"}`}
-        >
-          {formatTime(timeLeft)}
+        <div className="flex items-center gap-4">
+          {isPermanent ? (
+            <div className="font-mono text-sm md:text-base tracking-widest text-green-500 drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]">
+              Connected ✓
+            </div>
+          ) : (
+            <>
+              <div
+                className={`font-mono text-sm md:text-base tracking-widest flex-1 text-center ${isExpiringSoon ? "text-accent drop-shadow-[0_0_5px_rgba(200,68,42,0.5)]" : "text-text-secondary/70"}`}
+              >
+                {formatTime(timeLeft)}
+              </div>
+              <button
+                onClick={handleConnect}
+                disabled={myConnected || connectLoading || !isChannelReady}
+                className={`px-3 py-1.5 rounded-full font-mono text-xs transition-colors border ${
+                  myConnected
+                    ? "bg-surface text-text-secondary/50 border-border/20 cursor-not-allowed"
+                    : "bg-green-950/30 text-green-400 border-green-800/50 hover:bg-green-900/40 hover:border-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.1)] hover:shadow-[0_0_15px_rgba(34,197,94,0.2)]"
+                }`}
+              >
+                {connectLoading ? "..." : myConnected ? "Waiting for other user..." : "Connect"}
+              </button>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -348,8 +583,8 @@ export default function ChatPage() {
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || !isChannelReady || isSending}
-            className={`flex-none p-3.5 rounded-full transition-all duration-300 ${input.trim() && isChannelReady && !isSending ? "bg-accent text-white scale-100 opacity-100 shadow-[0_0_15px_rgba(200,68,42,0.4)]" : "bg-border/30 text-text-secondary/30 scale-95 opacity-50 pointer-events-none"}`}
+            disabled={!input.trim() || !isChannelReady}
+            className={`flex-none p-3.5 rounded-full transition-all duration-300 ${input.trim() ? "bg-accent text-white scale-100 opacity-100 shadow-[0_0_15px_rgba(200,68,42,0.4)]" : "bg-border/30 text-text-secondary/30 scale-95 opacity-50 pointer-events-none"}`}
           >
             <svg
               width="20"
