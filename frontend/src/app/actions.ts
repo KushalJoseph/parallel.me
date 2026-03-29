@@ -96,6 +96,40 @@ export async function getMessages(roomId: string) {
   return res.json();
 }
 
+export type ConversationItem =
+  | {
+      type: "pending";
+      entryId: string;
+      title: string;
+      createdAt: string;
+    }
+  | {
+      type: "active";
+      roomId: string;
+      title: string;
+      icebreakerPreview: string;
+      expiresAt: string;
+      createdAt: string;
+    };
+
+export async function getUserConversations(): Promise<ConversationItem[]> {
+  const token = await getAuthToken();
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/api/user/conversations`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function sendMessage(roomId: string, message: any) {
   const token = await getAuthToken();
   const res = await fetch(

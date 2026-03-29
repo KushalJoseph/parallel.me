@@ -66,7 +66,27 @@ export default function WaitingPage() {
   }, [entryId]); // router intentionally omitted — accessed via routerRef
 
   return (
-    <main className="flex-1 flex flex-col items-center justify-center min-h-[100dvh]">
+    <main className="flex-1 flex flex-col items-center justify-center min-h-[100dvh] relative">
+      {/* Back button */}
+      <button
+        onClick={() => router.push("/write")}
+        className="absolute top-6 left-6 flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors font-mono text-sm"
+        aria-label="Back to write"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        >
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
+        back
+      </button>
+
       <div className="relative w-64 h-64 flex items-center justify-center z-10">
         <motion.div
           animate={isMatched ? { rotate: 0 } : { rotate: 360 }}

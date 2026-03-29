@@ -2,14 +2,14 @@
 
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getRoom } from "@/app/actions";
 
 export default function MatchRevealPage() {
   const searchParams = useSearchParams();
   const roomId = searchParams.get("roomId");
-  
+  const router = useRouter();
+
   const [timeLeft, setTimeLeft] = useState({ h: 23, m: 59, s: 59 });
   const [showCTA, setShowCTA] = useState(false);
   const [icebreakerWords, setIcebreakerWords] = useState<string[]>([]);
@@ -49,6 +49,22 @@ export default function MatchRevealPage() {
 
   const formatTime = (t: {h:number, m:number, s:number}) => {
     return `${t.h.toString().padStart(2, '0')}:${t.m.toString().padStart(2, '0')}:${t.s.toString().padStart(2, '0')}`;
+  };
+
+  const handleEnterChat = () => {
+    if (!roomId) return;
+    try {
+      const visited: string[] = JSON.parse(
+        localStorage.getItem("visitedRooms") ?? "[]"
+      );
+      if (!visited.includes(roomId)) {
+        visited.push(roomId);
+        localStorage.setItem("visitedRooms", JSON.stringify(visited));
+      }
+    } catch {
+      // localStorage unavailable — proceed anyway
+    }
+    router.push(`/chat/${roomId}`);
   };
 
   return (
@@ -112,14 +128,15 @@ export default function MatchRevealPage() {
           transition={{ duration: 0.6, ease: "easeOut" }}
           className={`transition-opacity ${showCTA ? 'pointer-events-auto' : 'pointer-events-none'}`}
         >
-          <Link 
-            href={roomId ? `/chat/${roomId}` : "#"}
-            className="group flex flex-col items-center gap-3 text-white transition-opacity"
+          <button
+            onClick={handleEnterChat}
+            disabled={!roomId}
+            className="group flex flex-col items-center gap-3 text-white transition-opacity disabled:opacity-50 cursor-pointer"
           >
             <div className="text-xl md:text-2xl font-body border-b border-text-secondary pb-2 group-hover:border-white transition-colors duration-300">
               Enter the conversation <span className="ml-3 font-light text-2xl">→</span>
             </div>
-          </Link>
+          </button>
         </motion.div>
 
       </div>
