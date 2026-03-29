@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Settings } from "lucide-react";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { supabase } from "@/lib/supabase";
-import { getRoom, getUserId } from "@/app/actions";
+import { getRoom, getUserId, getMessages, sendMessage } from "@/app/actions";
 
 type Message = {
   id: string;
@@ -76,8 +76,8 @@ export default function ChatPage() {
 
     console.log("[CHAT] effect started — roomId:", roomId);
 
-    Promise.all([getUserId(), getRoom(roomId)])
-      .then(([uid, roomData]) => {
+    Promise.all([getUserId(), getRoom(roomId), getMessages(roomId)])
+      .then(([uid, roomData, history]) => {
         console.log(
           "[CHAT] Promise.all resolved — cancelled:",
           cancelled,
@@ -101,14 +101,23 @@ export default function ChatPage() {
           return;
         }
 
+        if (history && history.length > 0) {
+          setMessages(history);
+        }
+
         console.log("[CHAT] creating channel:", roomData.supabaseChannel);
-        const ch = supabase.channel(roomData.supabaseChannel);
+        const ch = supabase.channel(roomData.supabaseChannel, {
+          config: { broadcast: { ack: true } }
+        });
         activeChannel = ch; // set immediately so cleanup can always remove it
 
         ch.on("broadcast", { event: "message" }, ({ payload }) => {
           if (cancelled) return; // guard: drop messages from zombie channels
           console.log("[CHAT] ← incoming broadcast message:", payload);
-          setMessages((prev) => [...prev, payload]);
+          setMessages((prev) => {
+            if (prev.some(m => m.id === payload.id)) return prev;
+            return [...prev, payload];
+          });
         }).subscribe((status) => {
           console.log(
             "[CHAT] subscribe status:",
@@ -212,6 +221,8 @@ export default function ChatPage() {
       .send({ type: "broadcast", event: "message", payload })
       .then((result: unknown) => console.log("[CHAT] send result:", result))
       .catch((err: unknown) => console.error("[CHAT] Broadcast failed:", err));
+
+    sendMessage(roomId, payload).catch((err: unknown) => console.error("Failed to persist message", err));
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -249,6 +260,9 @@ export default function ChatPage() {
         console.error("Failed to send identity share:", err);
         setIdentityChips((prev) => [...prev, chip]);
       });
+
+    // Persist system message
+    sendMessage(roomId, payload).catch(console.error);
   };
 
   useEffect(() => {

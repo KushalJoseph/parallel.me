@@ -22,6 +22,13 @@ class Entry(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+class ChatMessage(BaseModel):
+    id: str
+    text: str
+    senderId: Optional[str] = None
+    isSystem: Optional[bool] = False
+    createdAt: datetime = Field(default_factory=get_utcnow)
+
 class Room(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     userAId: str
@@ -30,6 +37,7 @@ class Room(BaseModel):
     entryBId: PyObjectId
     icebreaker: str
     supabaseChannel: str
+    messages: List[ChatMessage] = Field(default_factory=list)
     createdAt: datetime = Field(default_factory=get_utcnow)
     expired: bool = False
     expiresAt: datetime

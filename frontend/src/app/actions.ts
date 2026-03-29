@@ -78,3 +78,40 @@ export async function getRoom(roomId: string) {
   }
   return res.json();
 }
+
+export async function getMessages(roomId: string) {
+  const token = await getAuthToken();
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/api/room/${roomId}/messages`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function sendMessage(roomId: string, message: any) {
+  const token = await getAuthToken();
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/api/room/${roomId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(message),
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status}`);
+  }
+  return res.json();
+}
