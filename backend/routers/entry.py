@@ -1,5 +1,8 @@
 
+import json
+import logging
 from datetime import datetime, timezone, timedelta
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -10,13 +13,90 @@ from database import entries_collection
 from models import Entry
 
 import os
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/entry", tags=["entry"])
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 LAVA_SECRET_KEY = os.getenv("LAVA_SECRET_KEY")
 
+ENRICHMENT_SYSTEM_PROMPT = """\
+You are a semantic enrichment engine. Take the user's raw input and compress it into a single, dense 2-3 sentence paragraph that captures:
+- The core subject or event
+- Their emotional state and underlying struggle
+- Their implicit intent or craving
+
+Output a strict JSON object with a single key: "enriched_context".
+The value must be concise (2-3 sentences max), precise, and semantically rich — it will be used as a vector embedding.
+
+Do not pad, elaborate, or repeat. Output ONLY the raw JSON object.
+
+USER INPUT:
+"{insert_user_text_here}"
+"""
+
+LAVA_ENDPOINT = "https://api.lava.so/v1/chat/completions"
+
+
+async def enrich_user_message(raw_text: str) -> tuple[str, str | None]:
+    """
+    Calls Lava (gpt-4o-mini) to semantically enrich raw_text.
+
+    Returns:
+        (text_to_embed, enriched_content)
+        - text_to_embed: enriched paragraph if successful, else raw_text (fallback)
+        - enriched_content: enriched paragraph string, or None on failure
+    """
+    if not LAVA_SECRET_KEY:
+        logger.warning("LAVA_SECRET_KEY not set — skipping enrichment, embedding raw text.")
+        return raw_text, None
+
+    prompt = ENRICHMENT_SYSTEM_PROMPT.replace("{insert_user_text_here}", raw_text)
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                LAVA_ENDPOINT,
+                headers={
+                    "Authorization": f"Bearer {LAVA_SECRET_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+
+        if resp.status_code != 200:
+            logger.warning(f"Lava enrichment error {resp.status_code}: {resp.text} — falling back to raw text.")
+            return raw_text, None
+
+        data = resp.json()
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if not content:
+            logger.warning("Lava returned empty content — falling back to raw text.")
+            return raw_text, None
+
+        parsed = json.loads(content)
+        enriched = parsed.get("enriched_context", "").strip()
+        if not enriched:
+            logger.warning("Lava JSON missing 'enriched_context' key — falling back to raw text.")
+            return raw_text, None
+
+        return enriched, enriched
+
+    except json.JSONDecodeError as e:
+        logger.warning(f"Lava returned malformed JSON: {e} — falling back to raw text.")
+        return raw_text, None
+    except Exception as e:
+        logger.warning(f"Lava enrichment request failed: {e} — falling back to raw text.")
+        return raw_text, None
+
+
 class EntryRequest(BaseModel):
-    text: str = Field(..., min_length=20, max_length=2000)
+    text: str = Field(..., min_length=10, max_length=2000)
+
 
 @router.post("")
 async def submit_entry(req: EntryRequest, user_id: str = Depends(get_current_user_id)):
@@ -25,29 +105,34 @@ async def submit_entry(req: EntryRequest, user_id: str = Depends(get_current_use
         raise HTTPException(status_code=500, detail="Gemini API not configured")
     client_ai = genai.Client(api_key=gemini_key)
 
-    # 1. Embed directly via Gemini SDK (Lava unsupported)
+    # 1. Enrich raw text via Lava before embedding
+    text_to_embed, enriched_content = await enrich_user_message(req.text)
+
+    # 2. Embed enriched text (falls back to raw text automatically if enrichment failed)
     try:
         response = client_ai.models.embed_content(
             model='gemini-embedding-001',
-            contents=req.text,
+            contents=text_to_embed,
         )
         vector = response.embeddings[0].values
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding failed: {str(e)}")
 
-    # 2. Store
+    # 3. Store raw_content, enriched_content, and embedding
     new_entry = Entry(
         userId=user_id,
-        text=req.text,
+        text=req.text,                       # kept for backward compatibility
+        raw_content=req.text,
+        enriched_content=enriched_content,   # None if Lava call failed
         embedding=vector,
         matched=False,
         createdAt=datetime.now(timezone.utc)
     )
-    
+
     result = await entries_collection.insert_one(new_entry.model_dump(by_alias=True, exclude={"id"}))
     entry_id = result.inserted_id
 
-    # 3. Match
+    # 4. Vector search for a match
     pipeline = [
         {
             "$vectorSearch": {
@@ -72,16 +157,15 @@ async def submit_entry(req: EntryRequest, user_id: str = Depends(get_current_use
 
     match_cursor = entries_collection.aggregate(pipeline)
     matches = await match_cursor.to_list(length=1)
-    
+
     print("DEBUG VECTOR SEARCH MATCHES:", matches)
 
-    # 4. Handle Match Results
+    # 5. Handle Match Results
     if matches and matches[0].get("score", 0) > 0.82:
         matched_entry = matches[0]
-        # Avoid circular imports by importing inside function
         from routers.room import create_room_internal
         room_id = await create_room_internal(user_id, entry_id, matched_entry["userId"], matched_entry["_id"])
-        
+
         return {"status": "matched", "roomId": str(room_id)}
 
     return {"status": "waiting", "entryId": str(entry_id)}

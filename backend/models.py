@@ -12,7 +12,9 @@ def get_utcnow():
 class Entry(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     userId: str
-    text: str
+    text: str                                   # kept for backward compatibility
+    raw_content: str                            # original unmodified user message
+    enriched_content: Optional[str] = None     # Lava-enriched paragraph (null on failure)
     embedding: List[float]
     matched: bool = False
     isSeeded: bool = False
