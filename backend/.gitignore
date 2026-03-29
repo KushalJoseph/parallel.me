@@ -77,3 +77,5 @@ cover/
 logs/
 *.log
 server_log.txt
+
+tests/fixtures.json
