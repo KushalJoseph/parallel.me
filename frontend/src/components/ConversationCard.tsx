@@ -61,6 +61,7 @@ export function ConversationCard({
   onClick: () => void;
 }) {
   const isPending = item.type === "pending";
+  const isPermanent = item.type === "active" && item.isPermanent;
 
   return (
     <motion.button
@@ -71,6 +72,8 @@ export function ConversationCard({
       className={`w-full text-left px-5 py-4 rounded-xl border transition-colors cursor-pointer ${
         isPending
           ? "bg-amber-950/30 border-amber-800/30 hover:border-amber-700/50"
+          : isPermanent
+          ? "bg-green-950/20 border-green-800/40 hover:border-green-600/50"
           : "bg-surface border-border/50 hover:border-accent-warm/50"
       }`}
     >
@@ -82,6 +85,8 @@ export function ConversationCard({
             transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
             className="w-2 h-2 rounded-full bg-amber-400 flex-none"
           />
+        ) : isPermanent ? (
+          <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)] flex-none" />
         ) : (
           <div className="w-2 h-2 rounded-full bg-accent-warm flex-none" />
         )}
@@ -95,13 +100,18 @@ export function ConversationCard({
         {isPending ? "Searching for your parallel..." : item.icebreakerPreview}
       </p>
 
-      {/* Bottom row: date/time + countdown (if active) */}
+        {/* Bottom row: date/time + countdown (if active) */}
       <div className="flex items-center justify-between pl-[18px]">
         <span className="font-mono text-[11px] text-text-secondary/40">
           {formatDateTime(item.createdAt)}
         </span>
-        {!isPending && (
+        {!isPending && !isPermanent && (
           <Countdown expiresAt={item.expiresAt} />
+        )}
+        {isPermanent && (
+          <span className="font-mono text-[11px] text-green-500/70 font-medium">
+            🔗 Saved
+          </span>
         )}
         {isPending && (
           <motion.span

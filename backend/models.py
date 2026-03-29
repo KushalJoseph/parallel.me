@@ -42,6 +42,9 @@ class Room(BaseModel):
     createdAt: datetime = Field(default_factory=get_utcnow)
     expired: bool = False
     expiresAt: datetime
+    userAConnected: bool = False
+    userBConnected: bool = False
+    isPermanent: bool = False
     guardianAlert: bool = False
     reportedAt: Optional[datetime] = None
     reportReason: Optional[str] = None

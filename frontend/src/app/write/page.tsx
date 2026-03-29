@@ -61,13 +61,25 @@ function SidebarContent({
             moment.
           </p>
         ) : (
-          conversations.map((item) => (
-            <ConversationCard
-              key={item.type === "pending" ? item.entryId : item.roomId}
-              item={item}
-              onClick={() => onCardClick(item)}
-            />
-          ))
+          [...conversations]
+            .sort((a, b) => {
+              const getRank = (item: ConversationItem) => {
+                if (item.type === "pending") return 1;
+                if (item.type === "active" && !item.isPermanent) return 2;
+                return 3;
+              };
+              const rankA = getRank(a);
+              const rankB = getRank(b);
+              if (rankA !== rankB) return rankA - rankB;
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            })
+            .map((item) => (
+              <ConversationCard
+                key={item.type === "pending" ? item.entryId : item.roomId}
+                item={item}
+                onClick={() => onCardClick(item)}
+              />
+            ))
         )}
       </div>
     </>

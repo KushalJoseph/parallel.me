@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Settings } from "lucide-react";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { supabase } from "@/lib/supabase";
-import { getRoom, getUserId, getMessages, sendMessage } from "@/app/actions";
+import { getRoom, getUserId, getMessages, sendMessage, connectRoom } from "@/app/actions";
 
 type Message = {
   id: string;
@@ -87,6 +87,10 @@ export default function ChatPage() {
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [channel, setChannel] = useState<any>(null);
   const [isChannelReady, setIsChannelReady] = useState(false);
+  const [myConnected, setMyConnected] = useState(false);
+  const [otherConnected, setOtherConnected] = useState(false);
+  const [isPermanent, setIsPermanent] = useState(false);
+  const [connectLoading, setConnectLoading] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -96,6 +100,31 @@ export default function ChatPage() {
     routerRef.current = router;
   });
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleConnect = async () => {
+    if (myConnected || isPermanent || !isChannelReady) return;
+    setConnectLoading(true);
+    try {
+      const res = await connectRoom(roomId);
+      
+      setMyConnected(true);
+      if (res.isPermanent) {
+        setIsPermanent(true);
+      }
+      
+      if (res.justConnected) {
+        channel.send({ type: "broadcast", event: "mutual_connect", payload: { systemMsg: res.systemMsg } }).catch(console.error);
+        setMessages((prev) => [...prev, res.systemMsg]);
+        playTone("receive");
+      } else {
+        channel.send({ type: "broadcast", event: "connect_clicked", payload: { senderId: myUserId } }).catch(console.error);
+      }
+    } catch (err) {
+      console.error("Failed to connect:", err);
+    } finally {
+      setConnectLoading(false);
+    }
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -151,6 +180,10 @@ export default function ChatPage() {
         }
 
         setMyUserId(uid);
+        setMyConnected(roomData.userAId === uid ? roomData.userAConnected : roomData.userBConnected);
+        setOtherConnected(roomData.userAId === uid ? roomData.userBConnected : roomData.userAConnected);
+        setIsPermanent(roomData.isPermanent);
+        
         if (roomData.status === "expired") {
           console.log("[CHAT] room already expired — redirecting to /sunset");
           routerRef.current.push("/sunset");
@@ -167,53 +200,77 @@ export default function ChatPage() {
           })
           .catch((err) => console.error("[CHAT] Failed to load history:", err));
 
-        console.log("[CHAT] creating channel:", roomData.supabaseChannel);
-        const ch = supabase.channel(roomData.supabaseChannel, {
-          config: { broadcast: { ack: true } }
-        });
-        activeChannel = ch; // set immediately so cleanup can always remove it
+        // Helper: wire up listeners on a channel object and subscribe
+        const setupChannel = (channelName: string, attempt = 1) => {
+          if (cancelled) return;
+          console.log(`[CHAT] creating channel (attempt ${attempt}):`, channelName);
 
-        ch.on("broadcast", { event: "message" }, ({ payload }) => {
-          if (cancelled) return; // guard: drop messages from zombie channels
-          console.log("[CHAT] ← incoming broadcast message:", payload);
-          
-          // Only play receive sound if the message was sent by the other user
-          if (payload.senderId !== uid && !payload.isSystem) {
-            playTone("receive");
-          }
-          
-          setMessages((prev) => {
-            if (prev.some(m => m.id === payload.id)) return prev;
-            return [...prev, payload];
+          const ch = supabase.channel(channelName, {
+            config: { broadcast: { ack: true } }
           });
-        }).subscribe((status) => {
-          console.log(
-            "[CHAT] subscribe status:",
-            status,
-            "| cancelled:",
-            cancelled,
-          );
-          if (cancelled) {
-            console.log(
-              "[CHAT] subscribe callback fired but cancelled — ignoring status:",
-              status,
-            );
-            return;
-          }
-          if (status === "SUBSCRIBED") {
-            console.log("[CHAT] ✓ channel SUBSCRIBED — ready to send/receive");
-            setChannel(ch);
-            setIsChannelReady(true);
-          } else if (
-            status === "CHANNEL_ERROR" ||
-            status === "TIMED_OUT" ||
-            status === "CLOSED"
-          ) {
-            console.warn("[CHAT] ✗ channel error/closed — status:", status);
-            setChannel(null);
-            setIsChannelReady(false);
-          }
-        });
+          activeChannel = ch;
+
+          ch.on("broadcast", { event: "message" }, ({ payload }) => {
+            if (cancelled) return;
+            console.log("[CHAT] ← incoming broadcast message:", payload);
+            if (payload.senderId !== uid && !payload.isSystem) {
+              playTone("receive");
+            }
+            setMessages((prev) => {
+              if (prev.some(m => m.id === payload.id)) return prev;
+              return [...prev, payload];
+            });
+          });
+
+          ch.on("broadcast", { event: "connect_clicked" }, ({ payload }) => {
+            if (cancelled) return;
+            if (payload.senderId !== uid) {
+              setOtherConnected(true);
+            }
+          });
+
+          ch.on("broadcast", { event: "mutual_connect" }, ({ payload }) => {
+            if (cancelled) return;
+            setOtherConnected(true);
+            setIsPermanent(true);
+            setMessages((prev) => {
+              if (prev.some(m => m.id === payload.systemMsg.id)) return prev;
+              return [...prev, payload.systemMsg];
+            });
+            playTone("receive");
+          });
+
+          ch.subscribe((status) => {
+            console.log("[CHAT] subscribe status:", status, "| cancelled:", cancelled);
+            if (cancelled) {
+              console.log("[CHAT] subscribe callback fired but cancelled — ignoring status:", status);
+              return;
+            }
+            if (status === "SUBSCRIBED") {
+              console.log("[CHAT] ✓ channel SUBSCRIBED — ready to send/receive");
+              setChannel(ch);
+              setIsChannelReady(true);
+            } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+              console.warn(`[CHAT] ✗ channel error — status: ${status}, attempt: ${attempt}`);
+              // Retry: remove the stale channel, wait for Supabase cleanup, then re-create
+              if (attempt < 4 && !cancelled) {
+                supabase.removeChannel(ch);
+                activeChannel = null;
+                const delay = attempt * 500;
+                console.log(`[CHAT] retrying in ${delay}ms...`);
+                setTimeout(() => setupChannel(channelName, attempt + 1), delay);
+              } else {
+                setChannel(null);
+                setIsChannelReady(false);
+              }
+            } else if (status === "CLOSED") {
+              setChannel(null);
+              setIsChannelReady(false);
+            }
+          });
+        };
+
+        setupChannel(roomData.supabaseChannel);
 
         expirePoll = setInterval(async () => {
           try {
@@ -385,10 +442,31 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div
-          className={`font-mono text-sm md:text-base tracking-widest ${isExpiringSoon ? "text-accent drop-shadow-[0_0_5px_rgba(200,68,42,0.5)]" : "text-text-secondary/70"}`}
-        >
-          {formatTime(timeLeft)}
+        <div className="flex items-center gap-4">
+          {isPermanent ? (
+            <div className="font-mono text-sm md:text-base tracking-widest text-green-500 drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]">
+              Connected ✓
+            </div>
+          ) : (
+            <>
+              <div
+                className={`font-mono text-sm md:text-base tracking-widest flex-1 text-center ${isExpiringSoon ? "text-accent drop-shadow-[0_0_5px_rgba(200,68,42,0.5)]" : "text-text-secondary/70"}`}
+              >
+                {formatTime(timeLeft)}
+              </div>
+              <button
+                onClick={handleConnect}
+                disabled={myConnected || connectLoading || !isChannelReady}
+                className={`px-3 py-1.5 rounded-full font-mono text-xs transition-colors border ${
+                  myConnected
+                    ? "bg-surface text-text-secondary/50 border-border/20 cursor-not-allowed"
+                    : "bg-green-950/30 text-green-400 border-green-800/50 hover:bg-green-900/40 hover:border-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.1)] hover:shadow-[0_0_15px_rgba(34,197,94,0.2)]"
+                }`}
+              >
+                {connectLoading ? "..." : myConnected ? "Waiting for other user..." : "Connect"}
+              </button>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-3">

@@ -98,14 +98,21 @@ async def get_room(room_id: str, user_id: str = Depends(get_current_user_id)):
         "status": "active",
         "icebreaker": room["icebreaker"],
         "supabaseChannel": room["supabaseChannel"],
-        "expiresAt": room["expiresAt"]
+        "expiresAt": room["expiresAt"],
+        "userAId": room["userAId"],
+        "userBId": room["userBId"],
+        "userAConnected": room.get("userAConnected", False),
+        "userBConnected": room.get("userBConnected", False),
+        "isPermanent": room.get("isPermanent", False),
     }
+
+from typing import Optional
 
 class MessageInput(BaseModel):
     id: str
     text: str
-    senderId: str = None
-    isSystem: bool = False
+    senderId: Optional[str] = None
+    isSystem: Optional[bool] = False
 
 @router.get("/{room_id}/messages")
 async def get_messages(room_id: str, user_id: str = Depends(get_current_user_id)):
@@ -147,3 +154,48 @@ async def add_message(room_id: str, message: MessageInput, user_id: str = Depend
         raise HTTPException(status_code=403, detail="Not allowed")
 
     return {"status": "success"}
+
+@router.post("/{room_id}/connect")
+async def connect_room(room_id: str, user_id: str = Depends(get_current_user_id)):
+    from bson.objectid import ObjectId
+    from pymongo import ReturnDocument
+    try:
+        obj_id = ObjectId(room_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid room ID format")
+
+    room = await rooms_collection.find_one({"_id": obj_id})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+        
+    if user_id not in [room["userAId"], room["userBId"]]:
+        raise HTTPException(status_code=403, detail="Not a participant in this room")
+
+    is_user_a = (user_id == room["userAId"])
+    update_field = "userAConnected" if is_user_a else "userBConnected"
+    
+    # We use find_one_and_update to reliably lock in the true states safely
+    updated_room = await rooms_collection.find_one_and_update(
+        {"_id": obj_id},
+        {"$set": {update_field: True}},
+        return_document=ReturnDocument.AFTER
+    )
+    
+    is_perm = updated_room.get("userAConnected") and updated_room.get("userBConnected")
+    
+    # If this very request caused the mutual connect, trigger the permanent save!
+    if is_perm and not updated_room.get("isPermanent"):
+        system_msg = {
+            "id": str(uuid.uuid4()),
+            "text": "You're now connected! This chat has been saved.",
+            "senderId": None,
+            "isSystem": True,
+            "createdAt": datetime.now(timezone.utc)
+        }
+        await rooms_collection.update_one(
+            {"_id": obj_id},
+            {"$set": {"isPermanent": True}, "$push": {"messages": system_msg}}
+        )
+        return {"isPermanent": True, "justConnected": True, "systemMsg": system_msg}
+
+    return {"isPermanent": is_perm, "justConnected": False}

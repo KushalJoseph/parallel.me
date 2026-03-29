@@ -110,6 +110,7 @@ export type ConversationItem =
       icebreakerPreview: string;
       expiresAt: string;
       createdAt: string;
+      isPermanent?: boolean;
     };
 
 export async function getUserConversations(): Promise<ConversationItem[]> {
@@ -141,6 +142,25 @@ export async function sendMessage(roomId: string, message: any) {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(message),
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function connectRoom(roomId: string) {
+  const token = await getAuthToken();
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/api/room/${roomId}/connect`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
     },
   );
 

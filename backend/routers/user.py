@@ -76,6 +76,7 @@ async def get_user_conversations(user_id: str = Depends(get_current_user_id)):
                 "icebreakerPreview": icebreaker_preview,
                 "expiresAt": r["expiresAt"].isoformat() + "Z",
                 "createdAt": r["createdAt"].isoformat() + "Z",
+                "isPermanent": r.get("isPermanent", False),
             }
         )
 
