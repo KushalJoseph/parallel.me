@@ -8,64 +8,73 @@ import { pollEntry } from "@/app/actions";
 const WAIT_TEXTS = [
   "Reading your wavelength...",
   "Searching for your parallel...",
-  "Someone is out there..."
+  "Someone is out there...",
 ];
 
 export default function WaitingPage() {
   const router = useRouter();
+  const routerRef = useRef(router);
+  useEffect(() => {
+    routerRef.current = router;
+  });
+
   const searchParams = useSearchParams();
   const entryId = searchParams.get("entryId");
   const [textIndex, setTextIndex] = useState(0);
   const [isMatched, setIsMatched] = useState(false);
-  const mounted = useRef(true);
 
   useEffect(() => {
-    mounted.current = true;
-    
-    // Cycle text every 2.5s
+    let cancelled = false;
+
+    // Cycle text every 2.5s — independent of polling
     const textInterval = setInterval(() => {
-      setTextIndex(curr => (curr + 1) % WAIT_TEXTS.length);
+      setTextIndex((curr) => (curr + 1) % WAIT_TEXTS.length);
     }, 2500);
 
-    // Poll backend every 5s
     let pollInterval: NodeJS.Timeout;
-    
+
     const checkMatch = async () => {
-      if (!entryId) return;
+      if (cancelled) return;
       try {
-        const data = await pollEntry(entryId);
-        if (data.status === "matched" && mounted.current) {
+        const data = await pollEntry(entryId!);
+        if (data.status === "matched" && !cancelled) {
           setIsMatched(true);
           clearInterval(pollInterval);
-          
-          // Wait for 1.2s visual flash before navigating
+          // Wait for the visual flash to play before navigating
           setTimeout(() => {
-            if (mounted.current) router.push(`/match?roomId=${data.roomId}`);
+            if (!cancelled)
+              routerRef.current.push(`/match?roomId=${data.roomId}`);
           }, 1200);
         }
       } catch (err) {
         console.error("Polling error:", err);
       }
     };
-    
+
     if (entryId) {
+      // Set the interval first so pollInterval is defined before checkMatch's
+      // await resolves and tries to clearInterval it on an immediate match.
       pollInterval = setInterval(checkMatch, 5000);
-      checkMatch(); // Check immediately on mount
+      checkMatch();
     }
 
     return () => {
-      mounted.current = false;
+      cancelled = true;
       clearInterval(textInterval);
-      if (pollInterval) clearInterval(pollInterval);
+      clearInterval(pollInterval);
     };
-  }, [router, entryId]);
+  }, [entryId]); // router intentionally omitted — accessed via routerRef
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center min-h-[100dvh]">
       <div className="relative w-64 h-64 flex items-center justify-center z-10">
         <motion.div
           animate={isMatched ? { rotate: 0 } : { rotate: 360 }}
-          transition={isMatched ? { duration: 0.5, type: "spring" } : { duration: 8, ease: "linear", repeat: Infinity }}
+          transition={
+            isMatched
+              ? { duration: 0.5, type: "spring" }
+              : { duration: 8, ease: "linear", repeat: Infinity }
+          }
           className="absolute inset-0 flex items-center justify-center"
         >
           {/* User shape (solid white) */}
@@ -76,17 +85,32 @@ export default function WaitingPage() {
           />
           {/* Ghost shape (them) */}
           <motion.div
-            animate={isMatched 
-              ? { x: 25, scale: 1.15, backgroundColor: "rgba(232,168,124,1)", borderColor: "rgba(232,168,124,1)" } // Turns to solid peach
-              : { x: 50, scale: 1, backgroundColor: "rgba(20,18,16,0)", borderColor: "rgba(240,235,227,0.3)" }
+            animate={
+              isMatched
+                ? {
+                    x: 25,
+                    scale: 1.15,
+                    backgroundColor: "rgba(232,168,124,1)",
+                    borderColor: "rgba(232,168,124,1)",
+                  }
+                : {
+                    x: 50,
+                    scale: 1,
+                    backgroundColor: "rgba(20,18,16,0)",
+                    borderColor: "rgba(240,235,227,0.3)",
+                  }
             }
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
-            className="absolute shrink-0 w-[72px] h-[72px] rounded-full border-2 backdrop-blur-sm shadow-[0_0_20px_rgba(232,168,124,0)]"
-            style={{ boxShadow: isMatched ? "0 0 20px rgba(232,168,124,0.4)" : undefined }}
+            className="absolute shrink-0 w-[72px] h-[72px] rounded-full border-2 backdrop-blur-sm"
+            style={{
+              boxShadow: isMatched
+                ? "0 0 20px rgba(232,168,124,0.4)"
+                : undefined,
+            }}
           />
         </motion.div>
 
-        {/* Flash effect when matched */}
+        {/* Flash bloom when matched */}
         <AnimatePresence>
           {isMatched && (
             <motion.div

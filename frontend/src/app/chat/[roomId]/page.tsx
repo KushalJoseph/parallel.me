@@ -32,11 +32,14 @@ export default function ChatPage() {
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [channel, setChannel] = useState<any>(null);
   const [isChannelReady, setIsChannelReady] = useState(false);
-  const [isSending, setIsSending] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
+  const routerRef = useRef(router);
+  useEffect(() => {
+    routerRef.current = router;
+  });
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -71,32 +74,65 @@ export default function ChatPage() {
 
     let cancelled = false;
 
+    console.log("[CHAT] effect started — roomId:", roomId);
+
     Promise.all([getUserId(), getRoom(roomId)])
       .then(([uid, roomData]) => {
-        if (cancelled) return;
+        console.log(
+          "[CHAT] Promise.all resolved — cancelled:",
+          cancelled,
+          "uid:",
+          uid,
+          "supabaseChannel:",
+          roomData?.supabaseChannel,
+          "roomStatus:",
+          roomData?.status,
+        );
 
-        setMyUserId(uid);
-        if (roomData.status === "expired") {
-          router.push("/sunset");
+        if (cancelled) {
+          console.log("[CHAT] cancelled before setup — bailing out");
           return;
         }
 
-        const ch = supabase.channel(roomData.supabaseChannel, {
-          config: { broadcast: { ack: true } },
-        });
+        setMyUserId(uid);
+        if (roomData.status === "expired") {
+          console.log("[CHAT] room already expired — redirecting to /sunset");
+          routerRef.current.push("/sunset");
+          return;
+        }
+
+        console.log("[CHAT] creating channel:", roomData.supabaseChannel);
+        const ch = supabase.channel(roomData.supabaseChannel);
+        activeChannel = ch; // set immediately so cleanup can always remove it
+
         ch.on("broadcast", { event: "message" }, ({ payload }) => {
+          if (cancelled) return; // guard: drop messages from zombie channels
+          console.log("[CHAT] ← incoming broadcast message:", payload);
           setMessages((prev) => [...prev, payload]);
         }).subscribe((status) => {
-          if (cancelled) return;
+          console.log(
+            "[CHAT] subscribe status:",
+            status,
+            "| cancelled:",
+            cancelled,
+          );
+          if (cancelled) {
+            console.log(
+              "[CHAT] subscribe callback fired but cancelled — ignoring status:",
+              status,
+            );
+            return;
+          }
           if (status === "SUBSCRIBED") {
+            console.log("[CHAT] ✓ channel SUBSCRIBED — ready to send/receive");
             setChannel(ch);
             setIsChannelReady(true);
-            activeChannel = ch;
           } else if (
             status === "CHANNEL_ERROR" ||
             status === "TIMED_OUT" ||
             status === "CLOSED"
           ) {
+            console.warn("[CHAT] ✗ channel error/closed — status:", status);
             setChannel(null);
             setIsChannelReady(false);
           }
@@ -106,26 +142,58 @@ export default function ChatPage() {
           try {
             const freshRoom = await getRoom(roomId);
             if (freshRoom.status === "expired") {
+              console.log(
+                "[CHAT] room expired (poll) — redirecting to /sunset",
+              );
               clearInterval(expirePoll);
-              router.push("/sunset");
+              routerRef.current.push("/sunset");
             }
           } catch (e) {}
         }, 60000);
       })
-      .catch(console.error);
+      .catch((err) => {
+        console.error("[CHAT] Promise.all failed:", err);
+      });
 
     return () => {
+      console.log(
+        "[CHAT] cleanup — activeChannel:",
+        activeChannel ? "exists" : "null",
+        "| setting cancelled=true",
+      );
       cancelled = true;
       setChannel(null);
       setIsChannelReady(false);
       if (activeChannel) supabase.removeChannel(activeChannel);
       if (expirePoll) clearInterval(expirePoll);
     };
-  }, [roomId, router]);
+  }, [roomId]); // router intentionally omitted — accessed via routerRef
 
-  const handleSend = async () => {
-    if (!input.trim() || !channel || !myUserId || !isChannelReady || isSending)
+  const handleSend = () => {
+    console.log(
+      "[CHAT] handleSend called — guards: input:",
+      !!input.trim(),
+      "| channel:",
+      !!channel,
+      "| myUserId:",
+      !!myUserId,
+      "| isChannelReady:",
+      isChannelReady,
+    );
+
+    if (!input.trim() || !channel || !myUserId || !isChannelReady) {
+      console.warn(
+        "[CHAT] handleSend blocked — failing guard. input:",
+        !!input.trim(),
+        "channel:",
+        !!channel,
+        "myUserId:",
+        !!myUserId,
+        "isChannelReady:",
+        isChannelReady,
+      );
       return;
+    }
 
     const payload = {
       id: Math.random().toString(),
@@ -133,26 +201,17 @@ export default function ChatPage() {
       senderId: myUserId,
     };
 
-    setIsSending(true);
-    try {
-      const result = await channel.send({
-        type: "broadcast",
-        event: "message",
-        payload,
-      });
+    console.log("[CHAT] → sending payload:", payload);
 
-      if (result === "ok") {
-        setMessages((prev) => [...prev, payload]);
-        setInput("");
-        setShowNudge(false);
-      } else {
-        console.error("Failed to send broadcast message:", result);
-      }
-    } catch (error) {
-      console.error("Failed to send broadcast message:", error);
-    } finally {
-      setIsSending(false);
-    }
+    // Optimistic update — show immediately, broadcast in background
+    setMessages((prev) => [...prev, payload]);
+    setInput("");
+    setShowNudge(false);
+
+    channel
+      .send({ type: "broadcast", event: "message", payload })
+      .then((result: unknown) => console.log("[CHAT] send result:", result))
+      .catch((err: unknown) => console.error("[CHAT] Broadcast failed:", err));
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -162,45 +221,34 @@ export default function ChatPage() {
     }
   };
 
-  const shareIdentity = async (chip: string) => {
-    if (!channel || !myUserId || !isChannelReady || isSending) return;
+  const shareIdentity = (chip: string) => {
+    if (!channel || !myUserId || !isChannelReady) return;
 
     setIdentityChips((prev) => prev.filter((c) => c !== chip));
 
     // We do NOT use real user data to maintain anonymity logic for this prototype.
     const value = chip.includes("name") ? "Jamie" : "Brooklyn";
     const payload = {
-      id: Math.random().toString(),
+      id: crypto.randomUUID(),
       text: `They shared their ${chip.split(" ")[1]} — it's ${value}.`,
       isSystem: true,
     };
 
-    setIsSending(true);
-    try {
-      const result = await channel.send({
-        type: "broadcast",
-        event: "message",
-        payload,
-      });
+    // Show sender's local version immediately
+    setMessages((prev) => [
+      ...prev,
+      {
+        ...payload,
+        text: `You shared your ${chip.split(" ")[1]} — it's ${value}.`,
+      },
+    ]);
 
-      if (result === "ok") {
-        setMessages((prev) => [
-          ...prev,
-          {
-            ...payload,
-            text: `You shared your ${chip.split(" ")[1]} — it's ${value}.`,
-          },
-        ]);
-      } else {
-        console.error("Failed to send identity share:", result);
+    channel
+      .send({ type: "broadcast", event: "message", payload })
+      .catch((err: unknown) => {
+        console.error("Failed to send identity share:", err);
         setIdentityChips((prev) => [...prev, chip]);
-      }
-    } catch (error) {
-      console.error("Failed to send identity share:", error);
-      setIdentityChips((prev) => [...prev, chip]);
-    } finally {
-      setIsSending(false);
-    }
+      });
   };
 
   useEffect(() => {
@@ -349,8 +397,8 @@ export default function ChatPage() {
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || !isChannelReady || isSending}
-            className={`flex-none p-3.5 rounded-full transition-all duration-300 ${input.trim() && isChannelReady && !isSending ? "bg-accent text-white scale-100 opacity-100 shadow-[0_0_15px_rgba(200,68,42,0.4)]" : "bg-border/30 text-text-secondary/30 scale-95 opacity-50 pointer-events-none"}`}
+            disabled={!input.trim() || !isChannelReady}
+            className={`flex-none p-3.5 rounded-full transition-all duration-300 ${input.trim() ? "bg-accent text-white scale-100 opacity-100 shadow-[0_0_15px_rgba(200,68,42,0.4)]" : "bg-border/30 text-text-secondary/30 scale-95 opacity-50 pointer-events-none"}`}
           >
             <svg
               width="20"

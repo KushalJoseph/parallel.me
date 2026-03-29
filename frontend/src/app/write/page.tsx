@@ -26,7 +26,7 @@ export default function WritePage() {
     .split(/\s+/)
     .filter((w) => w.length > 0);
   const wordCount = text.trim() === "" ? 0 : words.length;
-  const isReady = wordCount >= 50;
+  const isReady = text.length >= 10;
 
   const today = new Date();
   const dateString = today.toLocaleDateString("en-US", {
@@ -79,7 +79,7 @@ export default function WritePage() {
   return (
     <main className="flex-1 flex flex-col px-6 md:px-12 py-8 min-h-[100dvh] relative max-w-4xl mx-auto w-full">
       {/* Header */}
-      <header className="flex justify-between items-center z-10 opacity-60 hover:opacity-100 transition-opacity">
+      <header className="relative z-30 flex justify-between items-center opacity-60 hover:opacity-100 transition-opacity">
         <div className="font-mono text-sm text-text-secondary">
           {dateString}
         </div>
@@ -88,7 +88,8 @@ export default function WritePage() {
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowUserMenu((v) => !v)}
-            className="p-1 rounded-full focus:outline-none"
+            type="button"
+            className="p-1 rounded-full focus:outline-none pointer-events-auto"
             aria-label="Account menu"
           >
             {user?.picture ? (
@@ -112,7 +113,7 @@ export default function WritePage() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: -4 }}
                 transition={{ duration: 0.15, ease: "easeOut" }}
-                className="absolute right-0 top-10 w-52 bg-surface/95 backdrop-blur-md border border-border/40 rounded-2xl shadow-2xl p-4 flex flex-col gap-3 z-50"
+                className="absolute right-0 top-10 w-52 bg-surface/95 backdrop-blur-md border border-border/40 rounded-2xl shadow-2xl p-4 flex flex-col gap-3 z-50 pointer-events-auto"
               >
                 {(user?.email || user?.name) && (
                   <>
@@ -123,8 +124,9 @@ export default function WritePage() {
                   </>
                 )}
                 <button
+                  type="button"
                   onClick={() => window.location.assign("/auth/logout")}
-                  className="font-mono text-xs text-text-secondary hover:text-white text-left transition-colors"
+                  className="font-mono text-xs text-text-secondary hover:text-white text-left transition-colors cursor-pointer"
                 >
                   Sign out
                 </button>
@@ -156,7 +158,7 @@ export default function WritePage() {
             <motion.div
               className={`absolute top-0 left-0 h-full ${isReady ? "bg-accent-warm" : "bg-text-secondary"}`}
               initial={{ width: 0 }}
-              animate={{ width: `${Math.min((wordCount / 50) * 100, 100)}%` }}
+              animate={{ width: `${Math.min((text.length / 10) * 100, 100)}%` }}
               transition={{ ease: "easeOut", duration: 0.3 }}
             />
             <AnimatePresence>
