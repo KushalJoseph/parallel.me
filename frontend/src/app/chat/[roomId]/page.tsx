@@ -15,6 +15,61 @@ type Message = {
   isSystem?: boolean;
 };
 
+// Singleton audio context to respect browser limits and policies
+let audioCtx: AudioContext | null = null;
+
+// Programmatically generate a lightweight notification sound using the Web Audio API
+const playTone = (type: "send" | "receive") => {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    
+    if (!audioCtx) audioCtx = new Ctx();
+    
+    // Resume context if browser autoplay policy suspended it initially
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume().catch(() => {});
+    }
+    if (audioCtx.state === "suspended") return;
+
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+
+    if (type === "send") {
+      // Soft ascending bloop for sending
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(400, now);
+      osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+      
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.1, now + 0.05);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } else {
+      // Gentle pop for receiving
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+      
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.2, now + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      
+      osc.start(now);
+      osc.stop(now + 0.2);
+    }
+  } catch (err) {
+    console.warn("Audio playback failed", err);
+  }
+};
+
 export default function ChatPage() {
   const params = useParams();
   const roomId = params.roomId as string;
@@ -114,6 +169,12 @@ export default function ChatPage() {
         ch.on("broadcast", { event: "message" }, ({ payload }) => {
           if (cancelled) return; // guard: drop messages from zombie channels
           console.log("[CHAT] ← incoming broadcast message:", payload);
+          
+          // Only play receive sound if the message was sent by the other user
+          if (payload.senderId !== uid && !payload.isSystem) {
+            playTone("receive");
+          }
+          
           setMessages((prev) => {
             if (prev.some(m => m.id === payload.id)) return prev;
             return [...prev, payload];
@@ -216,6 +277,9 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, payload]);
     setInput("");
     setShowNudge(false);
+    
+    // Play send sound effect
+    playTone("send");
 
     channel
       .send({ type: "broadcast", event: "message", payload })
@@ -253,6 +317,9 @@ export default function ChatPage() {
         text: `You shared your ${chip.split(" ")[1]} — it's ${value}.`,
       },
     ]);
+    
+    // Play sound for sharing an identity chip as well
+    playTone("send");
 
     channel
       .send({ type: "broadcast", event: "message", payload })
