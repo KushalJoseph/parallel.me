@@ -78,8 +78,8 @@ export default function MatchRevealPage() {
           transition={{ type: "spring", stiffness: 200, damping: 20, delay: 0.1 }}
           className="flex items-center justify-center mb-10"
         >
-          <div className="w-[72px] h-[72px] rounded-full bg-text-primary shadow-[0_0_20px_rgba(240,235,227,0.4)] transform -translate-x-[25px] scale-110 z-10" />
-          <div className="w-[72px] h-[72px] rounded-full bg-accent-warm shadow-[0_0_20px_rgba(232,168,124,0.4)] transform translate-x-[25px] scale-110" />
+          <div className="w-[72px] h-[72px] rounded-full bg-text-primary shadow-[0_0_80px_rgba(226,79,68,0.7)] transform -translate-x-[25px] scale-110 z-10" />
+          <div className="w-[72px] h-[72px] rounded-full bg-accent-warm shadow-[0_0_100px_rgba(244,147,66,0.9)] transform translate-x-[25px] scale-110" />
         </motion.div>
 
         {/* Label */}
