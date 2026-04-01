@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Playfair_Display, DM_Sans, DM_Mono } from "next/font/google";
 import "./globals.css";
 import { TransitionLayout } from "@/components/TransitionLayout";
+import { AuthProvider } from "@/lib/auth-context";
 
 const playfair = Playfair_Display({
   variable: "--font-playfair",
@@ -43,9 +44,11 @@ export default function RootLayout({
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-white/5 rounded-full blur-[150px] mix-blend-screen" />
         </div>
 
-        <TransitionLayout>
-          {children}
-        </TransitionLayout>
+        <AuthProvider>
+          <TransitionLayout>
+            {children}
+          </TransitionLayout>
+        </AuthProvider>
       </body>
     </html>
   );

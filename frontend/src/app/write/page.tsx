@@ -5,18 +5,13 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   submitEntry,
-  getUser,
   getUserConversations,
   type ConversationItem,
 } from "@/app/actions";
 import { ConversationCard } from "@/components/ConversationCard";
-
-type User = {
-  id: string;
-  name: string | null;
-  email: string | null;
-  picture: string | null;
-};
+import { useAuth } from "@/lib/auth-context";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
 
 function SidebarContent({
@@ -99,7 +94,6 @@ function SidebarContent({
 export default function WritePage() {
   const [text, setText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
@@ -107,6 +101,7 @@ export default function WritePage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const { user, loading, getIdToken } = useAuth();
 
   const isReady = text.length >= 10;
 
@@ -121,17 +116,18 @@ export default function WritePage() {
     if (textareaRef.current) {
       textareaRef.current.focus();
     }
-    getUser().then(setUser);
   }, []);
 
   // Poll conversations every 5 seconds
   useEffect(() => {
+    if (loading || !user) return;
     let cancelled = false;
 
     const fetchConvos = async () => {
       if (cancelled) return;
       try {
-        const data = await getUserConversations();
+        const token = await getIdToken();
+        const data = await getUserConversations(token);
         if (!cancelled) setConversations(data);
       } catch (err) {
         console.error("Failed to fetch conversations:", err);
@@ -145,7 +141,7 @@ export default function WritePage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [user, loading]);
 
   // Close user menu on outside click
   useEffect(() => {
@@ -165,7 +161,8 @@ export default function WritePage() {
 
     setIsSubmitting(true);
     try {
-      const data = await submitEntry(text);
+      const token = await getIdToken();
+      const data = await submitEntry(token, text);
 
       if (data.status === "matched") {
         router.push(`/match?roomId=${data.roomId}`);
@@ -198,7 +195,7 @@ export default function WritePage() {
     }
   };
 
-  const userInitial = (user?.name || user?.email || "?")[0].toUpperCase();
+  const userInitial = ((user?.displayName || user?.email || "?")[0]).toUpperCase();
 
   const ToggleIcon = () => (
     <svg
@@ -311,9 +308,9 @@ export default function WritePage() {
               className="p-1 rounded-full focus:outline-none pointer-events-auto"
               aria-label="Account menu"
             >
-              {user?.picture ? (
+              {user?.photoURL ? (
                 <img
-                  src={user.picture}
+                  src={user.photoURL}
                   alt="Profile"
                   referrerPolicy="no-referrer"
                   className="w-7 h-7 rounded-full object-cover ring-1 ring-border/40"
@@ -334,17 +331,20 @@ export default function WritePage() {
                   transition={{ duration: 0.15, ease: "easeOut" }}
                   className="absolute right-0 top-10 w-52 bg-surface/95 backdrop-blur-md border border-border/40 rounded-2xl shadow-2xl p-4 flex flex-col gap-3 z-50 pointer-events-auto"
                 >
-                  {(user?.email || user?.name) && (
+                  {(user?.email || user?.displayName) && (
                     <>
                       <p className="font-mono text-xs text-text-secondary truncate">
-                        {user.email || user.name}
+                        {user.email || user.displayName}
                       </p>
                       <div className="h-px bg-border/30" />
                     </>
                   )}
                   <button
                     type="button"
-                    onClick={() => window.location.assign("/auth/logout")}
+                    onClick={async () => {
+                      await signOut(auth);
+                      router.push("/auth");
+                    }}
                     className="font-mono text-xs text-text-secondary hover:text-white text-left transition-colors cursor-pointer"
                   >
                     Sign out

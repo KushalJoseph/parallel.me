@@ -69,9 +69,8 @@ watchfiles==1.1.1
 websockets==15.0.1
 yarl==1.23.0
 zstandard==0.25.0
-auth0-server-python>=1.0.0b7
+firebase-admin
 Jinja2
 python-multipart
-itsdangerous
 pytest
 pytest-asyncio
