@@ -14,6 +14,8 @@ import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
 
+type SidebarTab = "active" | "waiting" | "saved";
+
 function SidebarContent({
   conversations,
   onCardClick,
@@ -25,14 +27,36 @@ function SidebarContent({
   onClose?: () => void;
   onToggle?: () => void;
 }) {
+  const [activeTab, setActiveTab] = useState<SidebarTab>("active");
+
+  const waiting = conversations.filter(i => i.type === "pending");
+  const active = conversations.filter(i => i.type === "active" && !i.isPermanent);
+  const saved = conversations.filter(i => i.type === "active" && i.isPermanent);
+
+  const tabItems: { id: SidebarTab; label: string; count: number }[] = [
+    { id: "waiting", label: "Waiting", count: waiting.length },
+    { id: "active",  label: "Active",  count: active.length  },
+    { id: "saved",   label: "Saved",   count: saved.length   },
+  ];
+
+  const visibleItems =
+    activeTab === "waiting" ? waiting :
+    activeTab === "active"  ? active  :
+    saved;
+
+  const emptyMessages: Record<SidebarTab, string> = {
+    waiting: "No entries waiting for a match.",
+    active:  "No active conversations right now.",
+    saved:   "No saved conversations yet.",
+  };
+
   return (
     <>
-      <div className="px-5 pt-6 pb-4 flex items-center justify-between">
+      <div className="px-5 pt-6 pb-3 flex items-center justify-between">
         <h2 className="font-display italic text-lg text-text-primary/70">
           Your moments
         </h2>
         <div className="flex items-center gap-1">
-          {/* Desktop: collapse toggle lives here, inside the sidebar */}
           {onToggle && (
             <button
               onClick={onToggle}
@@ -44,7 +68,6 @@ function SidebarContent({
               </svg>
             </button>
           )}
-          {/* Mobile: close overlay */}
           {onClose && (
             <button
               onClick={onClose}
@@ -59,25 +82,39 @@ function SidebarContent({
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex px-4 pb-3 gap-1">
+        {tabItems.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg font-mono text-xs transition-colors ${
+              activeTab === tab.id
+                ? "bg-white/10 text-text-primary"
+                : "text-text-secondary/50 hover:text-text-secondary"
+            }`}
+          >
+            {tab.label}
+            {tab.count > 0 && (
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                activeTab === tab.id ? "bg-accent" : "bg-text-secondary/30"
+              }`} />
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div className="h-px bg-white/10 mx-4 mb-3" />
+
+      {/* Tab content */}
       <div className="flex-1 overflow-y-auto px-4 pb-4 flex flex-col gap-2.5">
-        {conversations.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <p className="font-mono text-xs text-text-secondary/40 text-center mt-8 px-4 leading-relaxed">
-            Your conversations will appear here once you submit your first
-            moment.
+            {emptyMessages[activeTab]}
           </p>
         ) : (
-          [...conversations]
-            .sort((a, b) => {
-              const getRank = (item: ConversationItem) => {
-                if (item.type === "pending") return 1;
-                if (item.type === "active" && !item.isPermanent) return 2;
-                return 3;
-              };
-              const rankA = getRank(a);
-              const rankB = getRank(b);
-              if (rankA !== rankB) return rankA - rankB;
-              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-            })
+          visibleItems
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
             .map((item) => (
               <ConversationCard
                 key={item.type === "pending" ? item.entryId : item.roomId}
