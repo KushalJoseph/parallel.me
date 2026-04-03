@@ -1,12 +1,12 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getRoom } from "@/app/actions";
 import { useAuth } from "@/lib/auth-context";
 
-export default function MatchRevealPage() {
+function MatchRevealContent() {
   const searchParams = useSearchParams();
   const roomId = searchParams.get("roomId");
   const router = useRouter();
@@ -156,5 +156,13 @@ export default function MatchRevealPage() {
 
       </div>
     </main>
+  );
+}
+
+export default function MatchRevealPage() {
+  return (
+    <Suspense>
+      <MatchRevealContent />
+    </Suspense>
   );
 }

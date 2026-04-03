@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { pollEntry } from "@/app/actions";
@@ -12,7 +12,7 @@ const WAIT_TEXTS = [
   "Someone is out there...",
 ];
 
-export default function WaitingPage() {
+function WaitingContent() {
   const router = useRouter();
   const routerRef = useRef(router);
   useEffect(() => {
@@ -163,5 +163,13 @@ export default function WaitingPage() {
         </AnimatePresence>
       </div>
     </main>
+  );
+}
+
+export default function WaitingPage() {
+  return (
+    <Suspense>
+      <WaitingContent />
+    </Suspense>
   );
 }
