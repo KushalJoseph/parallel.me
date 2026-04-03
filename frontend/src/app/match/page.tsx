@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getRoom } from "@/app/actions";
+import { useAuth } from "@/lib/auth-context";
 
 export default function MatchRevealPage() {
   const searchParams = useSearchParams();
@@ -13,10 +14,11 @@ export default function MatchRevealPage() {
   const [timeLeft, setTimeLeft] = useState({ h: 23, m: 59, s: 59 });
   const [showCTA, setShowCTA] = useState(false);
   const [icebreakerWords, setIcebreakerWords] = useState<string[]>([]);
+  const { getIdToken } = useAuth();
   
   useEffect(() => {
     if (roomId) {
-      getRoom(roomId).then(data => {
+      getIdToken().then(token => getRoom(token, roomId)).then(data => {
         if (data.status === "active" && data.icebreaker) {
           setIcebreakerWords(data.icebreaker.split(" "));
         }

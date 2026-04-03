@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { pollEntry } from "@/app/actions";
+import { useAuth } from "@/lib/auth-context";
 
 const WAIT_TEXTS = [
   "Reading your wavelength...",
@@ -22,6 +23,7 @@ export default function WaitingPage() {
   const entryId = searchParams.get("entryId");
   const [textIndex, setTextIndex] = useState(0);
   const [isMatched, setIsMatched] = useState(false);
+  const { getIdToken } = useAuth();
 
   useEffect(() => {
     let cancelled = false;
@@ -36,7 +38,8 @@ export default function WaitingPage() {
     const checkMatch = async () => {
       if (cancelled) return;
       try {
-        const data = await pollEntry(entryId!);
+        const token = await getIdToken();
+        const data = await pollEntry(token, entryId!);
         if (data.status === "matched" && !cancelled) {
           setIsMatched(true);
           clearInterval(pollInterval);

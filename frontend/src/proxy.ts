@@ -1,8 +1,13 @@
 import type { NextRequest } from 'next/server';
-import { auth0 } from './lib/auth0';
+import { NextResponse } from 'next/server';
 
-export async function proxy(request: NextRequest) {
-  return await auth0.middleware(request);
+/**
+ * Middleware — Firebase auth is client-side (Firebase SDK + onAuthStateChanged).
+ * Server-side route protection is enforced at the FastAPI backend via Firebase token
+ * verification. This middleware simply passes all requests through.
+ */
+export function proxy(request: NextRequest) {
+  return NextResponse.next();
 }
 
 export const config = {

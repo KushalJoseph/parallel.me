@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Settings } from "lucide-react";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { supabase } from "@/lib/supabase";
-import { getRoom, getUserId, getMessages, sendMessage, connectRoom, deleteRoom } from "@/app/actions";
+import { getRoom, getMessages, sendMessage, connectRoom, deleteRoom } from "@/app/actions";
+import { useAuth } from "@/lib/auth-context";
 
 type Message = {
   id: string;
@@ -147,14 +148,14 @@ export default function ChatPage() {
     routerRef.current = router;
   });
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const { getIdToken } = useAuth();
 
   const handleEndChat = async () => {
     if (!channel || !isChannelReady) return;
     try {
-      // Broadcast to the other user that the chat has been ended
       await channel.send({ type: "broadcast", event: "end_chat", payload: { endedBy: myUserId } });
-      // Delete from database
-      await deleteRoom(roomId);
+      const token = await getIdToken();
+      await deleteRoom(token, roomId);
       router.push("/write");
     } catch (err) {
       console.error("Failed to end chat:", err);
@@ -165,7 +166,8 @@ export default function ChatPage() {
     if (myConnected || isPermanent || !isChannelReady) return;
     setConnectLoading(true);
     try {
-      const res = await connectRoom(roomId);
+      const token = await getIdToken();
+      const res = await connectRoom(token, roomId);
       
       setMyConnected(true);
       if (res.isPermanent) {
@@ -220,11 +222,17 @@ export default function ChatPage() {
 
     console.log("[CHAT] effect started — roomId:", roomId);
 
-    // Phase 1: connect to Supabase immediately — don't wait for history
-    Promise.all([getUserId(), getRoom(roomId)])
-      .then(([uid, roomData]) => {
+    // Phase 1: get auth token + room data together
+    getIdToken().then(async (token) => {
+      if (cancelled) return;
+
+      const [uid, roomData] = await Promise.all([
+        Promise.resolve((await import('@/lib/firebase')).auth.currentUser?.uid ?? null),
+        getRoom(token, roomId),
+      ]);
+
         console.log(
-          "[CHAT] Promise.all resolved — cancelled:",
+          "[CHAT] resolved — cancelled:",
           cancelled,
           "uid:",
           uid,
@@ -246,7 +254,6 @@ export default function ChatPage() {
         setOtherConnected(userIsA ? roomData.userBConnected : roomData.userAConnected);
         setIsPermanent(roomData.isPermanent);
 
-        // Seed initial suggestion using a random starting index
         const pool = userIsA ? promptsA : promptsB;
         const startIdx = Math.floor(Math.random() * pool.length);
         suggestionIndexRef.current = startIdx;
@@ -259,7 +266,7 @@ export default function ChatPage() {
         }
 
         // Phase 2: load history in parallel — channel is already live
-        getMessages(roomId)
+        getMessages(token, roomId)
           .then((history) => {
             if (cancelled) return;
             if (history && history.length > 0) {
@@ -360,7 +367,8 @@ export default function ChatPage() {
 
         expirePoll = setInterval(async () => {
           try {
-            const freshRoom = await getRoom(roomId);
+            const token = await getIdToken();
+            const freshRoom = await getRoom(token, roomId);
             if (freshRoom.status === "expired") {
               console.log(
                 "[CHAT] room expired (poll) — redirecting to /sunset",
@@ -370,10 +378,9 @@ export default function ChatPage() {
             }
           } catch (e) {}
         }, 60000);
-      })
-      .catch((err) => {
-        console.error("[CHAT] Promise.all failed:", err);
-      });
+    }).catch((err) => {
+      console.error("[CHAT] Setup failed:", err);
+    });
 
     return () => {
       console.log(
@@ -437,7 +444,7 @@ export default function ChatPage() {
       .then((result: unknown) => console.log("[CHAT] send result:", result))
       .catch((err: unknown) => console.error("[CHAT] Broadcast failed:", err));
 
-    sendMessage(roomId, payload).catch((err: unknown) => console.error("Failed to persist message", err));
+    getIdToken().then(token => sendMessage(token, roomId, payload)).catch((err: unknown) => console.error("Failed to persist message", err));
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -480,7 +487,7 @@ export default function ChatPage() {
       });
 
     // Persist system message
-    sendMessage(roomId, payload).catch(console.error);
+    getIdToken().then(token => sendMessage(token, roomId, payload)).catch(console.error);
   };
 
   useEffect(() => {
