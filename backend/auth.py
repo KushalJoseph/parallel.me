@@ -1,4 +1,5 @@
 import os
+import json
 import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 from fastapi import Depends, HTTPException
@@ -8,13 +9,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TESTING = os.getenv("TESTING", "false").lower() == "true"
-FIREBASE_SERVICE_ACCOUNT_PATH = os.getenv(
-    "FIREBASE_SERVICE_ACCOUNT_PATH", "firebase-service-account.json"
-)
 
 # Initialize Firebase Admin SDK (only once)
+# Prefer FIREBASE_SERVICE_ACCOUNT_JSON (env var with full JSON) over file path,
+# so production deployments don't need the file on disk.
 if not firebase_admin._apps:
-    cred = credentials.Certificate(FIREBASE_SERVICE_ACCOUNT_PATH)
+    sa_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+    if sa_json:
+        cred = credentials.Certificate(json.loads(sa_json))
+    else:
+        sa_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH", "firebase-service-account.json")
+        cred = credentials.Certificate(sa_path)
     firebase_admin.initialize_app(cred)
 
 security = HTTPBearer(auto_error=False)
