@@ -92,48 +92,12 @@ export default function ChatPage() {
   const [isUserA, setIsUserA] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState("");
   const suggestionIndexRef = useRef(0);
+  const [icebreakers, setIcebreakers] = useState<string[]>([]);
 
-  // Two distinct pools so each user sees different prompts
-  const promptsA = [
-    "What's something small that made you smile today?",
-    "If you could relive one moment from this week, which would it be?",
-    "What's a song that matches your mood right now?",
-    "What's something you've been overthinking lately?",
-    "If your day had a movie title, what would it be?",
-    "What's a compliment you received that stuck with you?",
-    "What's the last thing that genuinely surprised you?",
-    "If you could master any skill overnight, what would it be?",
-    "What does your ideal quiet evening look like?",
-    "What's something you wish people asked you about more?",
-    "What's a memory that always makes you feel warm?",
-    "If you could send a message to your future self, what would you say?",
-    "What's the bravest thing you've done recently?",
-    "What's a small act of kindness you witnessed lately?",
-    "What would you do if you had zero fear for a day?",
-  ];
-  const promptsB = [
-    "What's one thing that felt heavy on your mind today?",
-    "What's a place that feels like home to you, even if it isn't?",
-    "What's a show or book that changed how you see something?",
-    "What do you wish you had more time for?",
-    "What's the most interesting conversation you've had recently?",
-    "What's a tradition or habit that's uniquely yours?",
-    "What would your perfect weekend morning look like?",
-    "What's something you're quietly proud of?",
-    "If you could have dinner with anyone alive, who would it be?",
-    "What's a lesson you learned the hard way?",
-    "What does 'being understood' look like to you?",
-    "What's a dream you haven't told many people about?",
-    "What's something you believed as a kid that you still carry?",
-    "What's a question you wish someone would ask you?",
-    "What's one thing you'd change about how people connect today?",
-  ];
-
-  const rotateSuggestion = (userIsA?: boolean) => {
-    const useA = userIsA !== undefined ? userIsA : isUserA;
-    const pool = useA ? promptsA : promptsB;
-    suggestionIndexRef.current = (suggestionIndexRef.current + 1) % pool.length;
-    setAiSuggestion(pool[suggestionIndexRef.current]);
+  const rotateSuggestion = () => {
+    if (icebreakers.length === 0) return;
+    suggestionIndexRef.current = (suggestionIndexRef.current + 1) % icebreakers.length;
+    setAiSuggestion(icebreakers[suggestionIndexRef.current]);
   };
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -250,8 +214,11 @@ export default function ChatPage() {
         setOtherConnected(userIsA ? roomData.userBConnected : roomData.userAConnected);
         setIsPermanent(roomData.isPermanent);
 
-        const pool = userIsA ? promptsA : promptsB;
-        const startIdx = Math.floor(Math.random() * pool.length);
+        const pool = roomData.icebreakers && roomData.icebreakers.length > 0 ? roomData.icebreakers : ["What's on your mind?"];
+        setIcebreakers(pool);
+        
+        // Always start at index 0 because the new AI suggestions are ordered from casual -> deep
+        const startIdx = 0;
         suggestionIndexRef.current = startIdx;
         setAiSuggestion(pool[startIdx]);
         
@@ -430,7 +397,6 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, payload]);
     setInput("");
     setShowNudge(false);
-    rotateSuggestion();
     
     // Play send sound effect
     playTone("send");
@@ -460,10 +426,10 @@ export default function ChatPage() {
 
   // Rotate AI suggestion every 10 seconds
   useEffect(() => {
-    if (!aiSuggestion) return; // don't start until seeded
-    const suggestionTimer = setInterval(() => rotateSuggestion(), 10000);
+    if (!aiSuggestion || icebreakers.length === 0) return; // don't start until seeded
+    const suggestionTimer = setInterval(() => rotateSuggestion(), 20000);
     return () => clearInterval(suggestionTimer);
-  }, [isUserA, aiSuggestion]);
+  }, [icebreakers, aiSuggestion]);
 
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -477,8 +443,9 @@ export default function ChatPage() {
   return (
     <main className="flex-1 flex flex-col h-[100dvh] relative">
       {/* Top Bar */}
-      <header className="flex-none flex items-center justify-between px-6 md:px-8 py-5 z-20 sticky top-0 bg-background/50 backdrop-blur-md border-b border-border/10">
-        <div className="flex items-center gap-3">
+      <header className="flex-none z-20 sticky top-0 bg-background/50 backdrop-blur-md border-b border-border/10">
+        <div className="max-w-5xl mx-auto w-full flex items-center justify-between px-6 md:px-8 py-5">
+          <div className="flex items-center gap-3">
           <button
             onClick={() => router.push("/write")}
             className="flex items-center gap-1 text-text-secondary hover:text-text-primary transition-colors font-mono text-xs"
@@ -503,7 +470,7 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 bg-surface/50 backdrop-blur-md border border-border/20 rounded-full px-4 py-1.5 shadow-sm">
           {isPermanent ? (
             <div className="font-mono text-sm md:text-base tracking-widest text-green-500 drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]">
               Connected ✓
@@ -511,17 +478,18 @@ export default function ChatPage() {
           ) : (
             <>
               <div
-                className={`font-mono text-sm md:text-base tracking-widest flex-1 text-center ${isExpiringSoon ? "text-accent drop-shadow-[0_0_5px_rgba(200,68,42,0.5)]" : "text-text-secondary/70"}`}
+                className={`font-mono text-sm tracking-widest ${isExpiringSoon ? "text-accent drop-shadow-[0_0_5px_rgba(200,68,42,0.5)]" : "text-text-secondary/80"}`}
               >
                 {formatTime(timeLeft)}
               </div>
+              <div className="w-[1px] h-4 bg-border/40" />
               <button
                 onClick={handleConnect}
                 disabled={myConnected || connectLoading || !isChannelReady}
-                className={`px-4 py-2 rounded-full font-mono text-xs font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-full font-mono text-[11px] uppercase tracking-wider font-semibold transition-all ${
                   myConnected
-                    ? "bg-surface text-text-secondary/50 border border-border/20 cursor-not-allowed"
-                    : "bg-green-600 text-white hover:bg-green-500 shadow-[0_2px_12px_rgba(34,197,94,0.3)] hover:shadow-[0_4px_16px_rgba(34,197,94,0.4)] active:scale-[0.97]"
+                    ? "bg-transparent text-text-secondary/50 cursor-not-allowed"
+                    : "bg-green-600 text-white hover:bg-green-500 shadow-[0_2px_12px_rgba(34,197,94,0.3)] hover:shadow-[0_4px_16px_rgba(34,197,94,0.5)] active:scale-[0.96]"
                 }`}
               >
                 {connectLoading ? "..." : myConnected ? "Waiting for other user..." : "Make Friend"}
@@ -533,7 +501,7 @@ export default function ChatPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowEndConfirm(true)}
-            className="text-xs px-3 py-1.5 bg-red-600 text-white font-mono font-medium rounded-lg hover:bg-red-500 transition-all shadow-[0_2px_10px_rgba(220,38,38,0.3)] active:scale-[0.97]"
+            className="text-[11px] px-3 py-1.5 border border-red-500/30 text-red-500/80 hover:bg-red-500/10 hover:border-red-500 hover:text-red-500 font-mono tracking-wide rounded-lg transition-all active:scale-[0.96]"
           >
             End Chat
           </button>
@@ -544,11 +512,39 @@ export default function ChatPage() {
             <Settings size={20} strokeWidth={1.5} />
           </button>
         </div>
+        </div>
       </header>
 
+      {/* AI Suggestion — floating top center, rotates every 20s */}
+      <AnimatePresence mode="wait">
+        {aiSuggestion && (
+          <motion.div
+            key={aiSuggestion}
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed top-[100px] md:top-[125px] left-1/2 -translate-x-1/2 flex justify-center w-full z-40 pointer-events-none px-4"
+          >
+            <button
+              onClick={() => { setInput(aiSuggestion); textareaRef.current?.focus(); }}
+              className="pointer-events-auto px-6 py-4 bg-surface/95 backdrop-blur-xl rounded-2xl border border-accent/20 text-center max-w-sm md:max-w-md shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:border-accent-warm/60 hover:shadow-[0_8px_40px_rgba(200,68,42,0.15)] transition-all duration-300 cursor-pointer group"
+            >
+              <p className="text-[11px] font-mono uppercase tracking-widest text-accent-warm/80 mb-2 group-hover:text-accent-warm transition-colors relative">
+                <span className="group-hover:hidden">Icebreaker Idea</span>
+                <span className="hidden group-hover:inline">Use Icebreaker</span>
+              </p>
+              <p className="font-display italic text-text-primary/90 group-hover:text-text-primary text-[19px] leading-[1.3] transition-colors">
+                "{aiSuggestion}"
+              </p>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Message Thread */}
-      <div className="flex-1 overflow-y-auto px-4 md:px-8 pb-4 pt-4 flex flex-col gap-[18px] hide-scrollbar z-10">
-        <AnimatePresence initial={false}>
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 pb-4 pt-40 md:pt-48 hide-scrollbar z-10">
+        <div className="max-w-3xl mx-auto flex flex-col gap-[18px]">
+          <AnimatePresence initial={false}>
           {messages.map((msg) => (
             <motion.div
               key={msg.id}
@@ -567,7 +563,7 @@ export default function ChatPage() {
                     ${
                       msg.senderId === myUserId
                         ? "bg-[#F0EBE3] text-[#0A0908] rounded-[24px] rounded-br-[4px]"
-                        : "bg-surface border border-border/40 text-text-primary rounded-[24px] rounded-bl-[4px]"
+                        : "bg-surface/60 backdrop-blur-md border border-border/40 text-text-primary rounded-[24px] rounded-bl-[4px]"
                     }`}
                 >
                   {msg.text}
@@ -577,37 +573,17 @@ export default function ChatPage() {
           ))}
         </AnimatePresence>
 
-        {/* AI Suggestion — rotates every 10s and on each message */}
-        <AnimatePresence mode="wait">
-          {aiSuggestion && (
-            <motion.div
-              key={aiSuggestion}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="flex justify-center w-full my-6 sticky bottom-4 z-20"
-            >
-              <button
-                onClick={() => { setInput(aiSuggestion); textareaRef.current?.focus(); bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }}
-                className="px-6 py-5 bg-surface/90 backdrop-blur-md rounded-2xl border border-border/40 text-center max-w-[85%] shadow-2xl hover:border-accent-warm/40 transition-all duration-200 cursor-pointer group"
-              >
-                <p className="font-display italic text-text-secondary/90 group-hover:text-text-primary text-xl leading-snug mb-2 transition-colors">
-                  "{aiSuggestion}"
-                </p>
-                <span className="text-accent-warm/50 group-hover:text-accent-warm text-[10px] font-mono uppercase tracking-widest transition-colors">tap to use</span>
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+
 
         <div ref={bottomRef} className="h-2 flex-none" />
+        </div>
       </div>
 
       {/* Input Area */}
       <div className="flex-none p-4 md:px-8 pb-6 bg-gradient-to-t from-background via-background/90 to-transparent sticky bottom-0 z-20">
 
         {/* Input Container */}
-        <div className="flex items-end gap-3 bg-surface/80 backdrop-blur-lg border border-border/40 rounded-[28px] pl-6 pr-2 py-2 shadow-[0_0_20px_rgba(0,0,0,0.5)] focus-within:border-border transition-colors w-full">
+        <div className="flex items-end gap-3 max-w-3xl mx-auto bg-surface/80 backdrop-blur-lg border border-border/40 rounded-[28px] pl-6 pr-2 py-2 shadow-[0_0_20px_rgba(0,0,0,0.5)] focus-within:border-border transition-colors w-full">
           <textarea
             ref={textareaRef}
             value={input}

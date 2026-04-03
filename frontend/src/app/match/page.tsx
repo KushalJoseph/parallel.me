@@ -19,8 +19,8 @@ export default function MatchRevealPage() {
   useEffect(() => {
     if (roomId) {
       getIdToken().then(token => getRoom(token, roomId)).then(data => {
-        if (data.status === "active" && data.icebreaker) {
-          setIcebreakerWords(data.icebreaker.split(" "));
+        if (data.status === "active" && data.icebreakers && data.icebreakers.length > 0) {
+          setIcebreakerWords(data.icebreakers[0].split(" "));
         }
       }).catch(console.error);
     }

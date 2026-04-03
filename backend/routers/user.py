@@ -55,11 +55,14 @@ async def get_user_conversations(user_id: str = Depends(get_current_user_id)):
         else:
             title = r.get("titleB")
 
-        if not title:
-            title = r.get("icebreaker") or "Untitled"
+        icebreaker_list = r.get("icebreakers", [])
+        # Support legacy rooms and new array-based rooms safely
+        first_icebreaker = icebreaker_list[0] if icebreaker_list else r.get("icebreaker", "")
 
-        icebreaker = r.get("icebreaker", "")
-        icebreaker_preview = icebreaker[:60] + ("..." if len(icebreaker) > 60 else "")
+        if not title:
+            title = first_icebreaker or "Untitled"
+
+        icebreaker_preview = first_icebreaker[:60] + ("..." if len(first_icebreaker) > 60 else "")
 
         active.append(
             {

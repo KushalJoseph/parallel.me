@@ -69,12 +69,12 @@ export function ConversationCard({
       whileHover={{ scale: 1.015, x: 3 }}
       whileTap={{ scale: 0.985 }}
       transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      className={`w-full text-left px-5 py-4 rounded-xl border transition-colors cursor-pointer ${
+      className={`w-full text-left px-5 py-4 rounded-2xl border transition-all cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-[1px] ${
         isPending
-          ? "bg-accent-warm/10 border-accent-warm/30 hover:border-accent-warm/60"
+          ? "bg-accent-warm/10 border-accent-warm/20 hover:border-accent-warm/40"
           : isPermanent
-          ? "bg-green-50 border-green-300/60 hover:border-green-400"
-          : "bg-white border-border hover:border-accent-warm/50"
+          ? "bg-green-50/60 backdrop-blur-md border-green-300/40 hover:border-green-400/60"
+          : "bg-white/40 backdrop-blur-md border-border/30 hover:border-accent-warm/40"
       }`}
     >
       {/* Status dot + title */}

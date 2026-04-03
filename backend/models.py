@@ -36,7 +36,7 @@ class Room(BaseModel):
     userBId: str
     entryAId: PyObjectId
     entryBId: PyObjectId
-    icebreaker: str
+    icebreakers: List[str] = Field(default_factory=list)
     titleA: Optional[str] = None   # user A's entry title, stored at room creation
     titleB: Optional[str] = None   # user B's entry title, stored at room creation
     supabaseChannel: str

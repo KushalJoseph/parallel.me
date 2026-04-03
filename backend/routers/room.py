@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import httpx
 import urllib.parse
+import re
 
 from auth import get_current_user_id
 from database import rooms_collection, entries_collection
@@ -25,34 +26,53 @@ async def create_room_internal(user_a_id: str, entry_a_id, user_b_id: str, entry
     # 2. Get entries
     entry_a = await entries_collection.find_one({"_id": entry_a_id})
     entry_b = await entries_collection.find_one({"_id": entry_b_id})
-    
+
     # 3. Generate Icebreaker via Lava wrapper of Groq
-    icebreaker = "What is one thing you wish someone understood about your day today?"
+    icebreakers = [
+        "What's one thing you wish someone understood about your day today?",
+        "If you could fast forward to tomorrow, what's the first thing you'd change?",
+        "What's the heaviest thing you're carrying right now?",
+        "If your day had a soundtrack, what song would be playing?",
+        "What's a small win you haven't celebrated yet?",
+        "Who is someone you wish you could talk to right now?",
+        "What does 'peace' look like for you today?",
+        "If you could give your past self one piece of advice this morning, what would it be?",
+        "What's a feeling you're trying to ignore?",
+        "How are you actually feeling, no filters?"
+    ]
+
     if LAVA_SECRET_KEY and entry_a and entry_b:
         prompt = f"""
-        Read these two anonymous diary entries and generate ONE short, empathetic opening question that connects them.
+        Read these two anonymous diary entries and generate EXACTLY 10 empathetic opening questions that could connect these two strangers.
+        Order the questions progressively: start with light/casual icebreakers and move towards deeper emotional questions based on their entries.
+        Return ONLY the 10 questions, one per line. Do not include numbers, bullet points, introductory text, or quotes.
         Entry 1: {entry_a['text']}
         Entry 2: {entry_b['text']}
-        Just return the question alone. No quotes.
         """
         
         chat_endpoint = "https://api.lava.so/v1/chat/completions"
         
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.post(
                     chat_endpoint,
                     headers={"Authorization": f"Bearer {LAVA_SECRET_KEY}", "Content-Type": "application/json"},
                     json={
                         "model": "gpt-4o-mini",
-                        "messages": [{"role": "user", "content": prompt}]
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.7
                     }
                 )
                 if resp.status_code == 200:
                     data = resp.json()
                     text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     if text:
-                        icebreaker = text.strip().strip('"')
+                        parsed = [
+                            re.sub(r'^\d+[\.\)]\s*', '', line.strip()).strip().strip('"').strip("'")
+                            for line in text.strip().split('\n') if line.strip()
+                        ]
+                        if parsed:
+                            icebreakers = parsed
                 else:
                     print(f"Lava Error: {resp.status_code} - {resp.text}")
         except Exception as e:
@@ -65,7 +85,7 @@ async def create_room_internal(user_a_id: str, entry_a_id, user_b_id: str, entry
         userBId=user_b_id,
         entryAId=str(entry_a_id),
         entryBId=str(entry_b_id),
-        icebreaker=icebreaker,
+        icebreakers=icebreakers,
         titleA=entry_a.get("title") if entry_a else None,
         titleB=entry_b.get("title") if entry_b else None,
         supabaseChannel=supabase_channel,
@@ -98,7 +118,7 @@ async def get_room(room_id: str, user_id: str = Depends(get_current_user_id)):
         
     return {
         "status": "active",
-        "icebreaker": room["icebreaker"],
+        "icebreakers": room.get("icebreakers", []),
         "supabaseChannel": room["supabaseChannel"],
         "expiresAt": room["expiresAt"],
         "userAId": room["userAId"],
