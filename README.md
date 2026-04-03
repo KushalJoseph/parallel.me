@@ -44,7 +44,7 @@ The conversation closes gracefully. No archive. No receipts. The constraint is t
 | Layer | Technology |
 |---|---|
 | Frontend | Next.js 16 (App Router), TypeScript, Tailwind CSS v4, Framer Motion |
-| Auth | Auth0 (RS256 JWT, Google / Apple / email) |
+| Auth | Firebase Authentication (Google OAuth) |
 | Realtime chat | Supabase Realtime (broadcast channels) |
 | Backend | FastAPI (Python), stateless REST API |
 | AI — Embeddings | Google Gemini (`gemini-embedding-001`, 3072 dimensions) |
@@ -54,7 +54,7 @@ The conversation closes gracefully. No archive. No receipts. The constraint is t
 
 ### Architecture in brief
 
-The **frontend** (Next.js) handles all UI, auth sessions, and page transitions. Server Actions attach Auth0 Bearer tokens to every call to the backend. Real-time messaging bypasses the backend entirely — both clients in a matched pair connect directly to the same Supabase broadcast channel.
+The **frontend** (Next.js) handles all UI, auth sessions, and page transitions. The Next.js client explicitly manages Firebase tokens and attaches these Bearer tokens to every call to the backend. Real-time messaging bypasses the backend entirely — both clients in a matched pair connect directly to the same Supabase broadcast channel.
 
 The **backend** (FastAPI) is a stateless orchestrator. It never touches chat messages. Its two jobs are: (1) run the vector match pipeline when an entry is submitted, and (2) serve room metadata to authenticated participants. A background scheduler marks rooms expired when their 24-hour window closes.
 

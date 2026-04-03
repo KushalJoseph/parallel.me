@@ -12,7 +12,7 @@ A Next.js 16 (App Router) web app for anonymous, ephemeral, AI-matched emotional
 | Language | TypeScript |
 | Styling | Tailwind CSS v4 |
 | Animation | Framer Motion |
-| Auth | Auth0 (`@auth0/nextjs-auth0` v4) |
+| Auth | Firebase (Client SDK) |
 | Realtime chat | Supabase Realtime (broadcast channels) |
 | Icons | Lucide React |
 

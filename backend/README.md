@@ -1,6 +1,6 @@
 # Parallel Me — Backend
 
-This is the **FastAPI backend** for Parallel Me. It acts as a stateless orchestrator: it validates identity (Auth0), generates AI embeddings (Gemini), runs semantic vector matching (MongoDB Atlas), generates empathetic conversation starters (Lava / GPT-4o-mini), and creates temporary chat rooms. Real-time messaging bypasses this server entirely, going directly through Supabase Realtime on the frontend.
+This is the **FastAPI backend** for Parallel Me. It acts as a stateless orchestrator: it validates identity (Firebase), generates AI embeddings (Gemini), runs semantic vector matching (MongoDB Atlas), generates empathetic conversation starters (Lava / GPT-4o-mini), and creates temporary chat rooms. Real-time messaging bypasses this server entirely, going directly through Supabase Realtime on the frontend.
 
 ---
 
