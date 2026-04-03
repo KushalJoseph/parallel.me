@@ -81,10 +81,6 @@ export default function ChatPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showNudge, setShowNudge] = useState(false);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
-  const [identityChips, setIdentityChips] = useState([
-    "Share first name",
-    "Share city",
-  ]);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [channel, setChannel] = useState<any>(null);
   const [isChannelReady, setIsChannelReady] = useState(false);
@@ -454,42 +450,6 @@ export default function ChatPage() {
     }
   };
 
-  const shareIdentity = (chip: string) => {
-    if (!channel || !myUserId || !isChannelReady) return;
-
-    setIdentityChips((prev) => prev.filter((c) => c !== chip));
-
-    // We do NOT use real user data to maintain anonymity logic for this prototype.
-    const value = chip.includes("name") ? "Jamie" : "Brooklyn";
-    const payload = {
-      id: crypto.randomUUID(),
-      text: `They shared their ${chip.split(" ")[1]} — it's ${value}.`,
-      isSystem: true,
-    };
-
-    // Show sender's local version immediately
-    setMessages((prev) => [
-      ...prev,
-      {
-        ...payload,
-        text: `You shared your ${chip.split(" ")[1]} — it's ${value}.`,
-      },
-    ]);
-    
-    // Play sound for sharing an identity chip as well
-    playTone("send");
-
-    channel
-      .send({ type: "broadcast", event: "message", payload })
-      .catch((err: unknown) => {
-        console.error("Failed to send identity share:", err);
-        setIdentityChips((prev) => [...prev, chip]);
-      });
-
-    // Persist system message
-    getIdToken().then(token => sendMessage(token, roomId, payload)).catch(console.error);
-  };
-
   useEffect(() => {
     const timer = setInterval(
       () => setTimeLeft((prev) => Math.max(0, prev - 1)),
@@ -645,26 +605,6 @@ export default function ChatPage() {
 
       {/* Input Area */}
       <div className="flex-none p-4 md:px-8 pb-6 bg-gradient-to-t from-background via-background/90 to-transparent sticky bottom-0 z-20">
-
-        {/* Progressive Identity Chips */}
-        {identityChips.length > 0 && messages.length > 1 && (
-          <div className="flex flex-wrap gap-2.5 mb-4 px-1">
-            <AnimatePresence>
-              {identityChips.map((chip) => (
-                <motion.button
-                  key={chip}
-                  initial={{ opacity: 0, scale: 0.9, y: 5 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  onClick={() => shareIdentity(chip)}
-                  className="px-4 py-[6px] rounded-full bg-surface border border-border/50 text-xs font-mono text-text-secondary hover:text-white hover:border-white/50 transition-colors shadow-sm"
-                >
-                  {chip}
-                </motion.button>
-              ))}
-            </AnimatePresence>
-          </div>
-        )}
 
         {/* Input Container */}
         <div className="flex items-end gap-3 bg-surface/80 backdrop-blur-lg border border-border/40 rounded-[28px] pl-6 pr-2 py-2 shadow-[0_0_20px_rgba(0,0,0,0.5)] focus-within:border-border transition-colors w-full">

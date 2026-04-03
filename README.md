@@ -32,7 +32,7 @@ The backend converts your entry into a 3072-dimensional semantic embedding (Goog
 The AI reads both entries and generates one opening question tailored to what both people are carrying. No blank canvas awkwardness.
 
 **4. Talk**
-A live, anonymous chat room opens. A countdown begins from 24:00:00. Progressive identity chips let you optionally share your first name or city — but only when you're ready. When the timer hits zero, the room is gone.
+A live, anonymous chat room opens. A countdown begins from 24:00:00. When the timer hits zero, the room is gone.
 
 **5. Sunset**
 The conversation closes gracefully. No archive. No receipts. The constraint is the point.
