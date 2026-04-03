@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
  * Server-side route protection is enforced at the FastAPI backend via Firebase token
  * verification. This middleware simply passes all requests through.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 

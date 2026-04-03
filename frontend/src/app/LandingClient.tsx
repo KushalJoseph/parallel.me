@@ -2,10 +2,24 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 
 export default function LandingClient() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/write");
+    }
+  }, [user, loading, router]);
+
   const tagline = "Find the one person who feels exactly what you feel, right now.";
   const words = tagline.split(" ");
+
+  if (loading) return null; // or a loading state
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center px-6 relative overflow-hidden min-h-[100dvh]">
