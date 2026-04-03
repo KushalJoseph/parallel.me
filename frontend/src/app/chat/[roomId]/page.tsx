@@ -180,7 +180,7 @@ export default function ChatPage() {
 
     let cancelled = false;
 
-    console.log("[CHAT] effect started — roomId:", roomId);
+
 
     // Phase 1: get auth token + room data together
     getIdToken().then(async (token) => {
@@ -191,19 +191,9 @@ export default function ChatPage() {
         getRoom(token, roomId),
       ]);
 
-        console.log(
-          "[CHAT] resolved — cancelled:",
-          cancelled,
-          "uid:",
-          uid,
-          "supabaseChannel:",
-          roomData?.supabaseChannel,
-          "roomStatus:",
-          roomData?.status,
-        );
+
 
         if (cancelled) {
-          console.log("[CHAT] cancelled before setup — bailing out");
           return;
         }
 
@@ -223,9 +213,14 @@ export default function ChatPage() {
         setAiSuggestion(pool[startIdx]);
         
         if (roomData.status === "expired") {
-          console.log("[CHAT] room already expired — redirecting to /sunset");
           routerRef.current.push("/sunset");
           return;
+        }
+
+        // Sync the countdown timer precisely to the database payload
+        if (roomData.expiresAt) {
+          const diffSeconds = Math.floor((new Date(roomData.expiresAt).getTime() - Date.now()) / 1000);
+          setTimeLeft(diffSeconds > 0 ? diffSeconds : 0);
         }
 
         // Phase 2: load history in parallel — channel is already live
@@ -241,7 +236,7 @@ export default function ChatPage() {
         // Helper: wire up listeners on a channel object and subscribe
         const setupChannel = (channelName: string, attempt = 1) => {
           if (cancelled) return;
-          console.log(`[CHAT] creating channel (attempt ${attempt}):`, channelName);
+
 
           const ch = supabase.channel(channelName, {
             config: { broadcast: { ack: true } }
@@ -250,7 +245,7 @@ export default function ChatPage() {
 
           ch.on("broadcast", { event: "message" }, ({ payload }) => {
             if (cancelled) return;
-            console.log("[CHAT] ← incoming broadcast message:", payload);
+
             if (payload.senderId !== uid && !payload.isSystem) {
               playTone("receive");
             }
@@ -297,13 +292,10 @@ export default function ChatPage() {
           });
 
           ch.subscribe((status) => {
-            console.log("[CHAT] subscribe status:", status, "| cancelled:", cancelled);
             if (cancelled) {
-              console.log("[CHAT] subscribe callback fired but cancelled — ignoring status:", status);
               return;
             }
             if (status === "SUBSCRIBED") {
-              console.log("[CHAT] ✓ channel SUBSCRIBED — ready to send/receive");
               setChannel(ch);
               setIsChannelReady(true);
             } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
@@ -313,7 +305,6 @@ export default function ChatPage() {
                 supabase.removeChannel(ch);
                 activeChannel = null;
                 const delay = attempt * 500;
-                console.log(`[CHAT] retrying in ${delay}ms...`);
                 setTimeout(() => setupChannel(channelName, attempt + 1), delay);
               } else {
                 setChannel(null);
@@ -333,9 +324,6 @@ export default function ChatPage() {
             const token = await getIdToken();
             const freshRoom = await getRoom(token, roomId);
             if (freshRoom.status === "expired") {
-              console.log(
-                "[CHAT] room expired (poll) — redirecting to /sunset",
-              );
               clearInterval(expirePoll);
               routerRef.current.push("/sunset");
             }
@@ -346,11 +334,6 @@ export default function ChatPage() {
     });
 
     return () => {
-      console.log(
-        "[CHAT] cleanup — activeChannel:",
-        activeChannel ? "exists" : "null",
-        "| setting cancelled=true",
-      );
       cancelled = true;
       setChannel(null);
       setIsChannelReady(false);
@@ -360,28 +343,7 @@ export default function ChatPage() {
   }, [roomId]); // router intentionally omitted — accessed via routerRef
 
   const handleSend = () => {
-    console.log(
-      "[CHAT] handleSend called — guards: input:",
-      !!input.trim(),
-      "| channel:",
-      !!channel,
-      "| myUserId:",
-      !!myUserId,
-      "| isChannelReady:",
-      isChannelReady,
-    );
-
     if (!input.trim() || !channel || !myUserId || !isChannelReady) {
-      console.warn(
-        "[CHAT] handleSend blocked — failing guard. input:",
-        !!input.trim(),
-        "channel:",
-        !!channel,
-        "myUserId:",
-        !!myUserId,
-        "isChannelReady:",
-        isChannelReady,
-      );
       return;
     }
 
@@ -390,8 +352,6 @@ export default function ChatPage() {
       text: input.trim(),
       senderId: myUserId,
     };
-
-    console.log("[CHAT] → sending payload:", payload);
 
     // Optimistic update — show immediately, broadcast in background
     setMessages((prev) => [...prev, payload]);
@@ -403,7 +363,7 @@ export default function ChatPage() {
 
     channel
       .send({ type: "broadcast", event: "message", payload })
-      .then((result: unknown) => console.log("[CHAT] send result:", result))
+      .then((result: unknown) => {})
       .catch((err: unknown) => console.error("[CHAT] Broadcast failed:", err));
 
     getIdToken().then(token => sendMessage(token, roomId, payload)).catch((err: unknown) => console.error("Failed to persist message", err));
@@ -545,32 +505,52 @@ export default function ChatPage() {
       <div className="flex-1 overflow-y-auto px-4 md:px-8 pb-4 pt-40 md:pt-48 hide-scrollbar z-10">
         <div className="max-w-3xl mx-auto flex flex-col gap-[18px]">
           <AnimatePresence initial={false}>
-          {messages.map((msg) => (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, y: 15, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ type: "spring", stiffness: 450, damping: 25 }}
-              className={`flex w-full ${msg.isSystem ? "justify-center my-4" : msg.senderId === myUserId ? "justify-end" : "justify-start"}`}
-            >
-              {msg.isSystem ? (
-                <div className="px-5 py-2 bg-surface/40 backdrop-blur-[2px] rounded-full border border-border/20 text-xs md:text-sm font-mono text-text-secondary shadow-sm">
-                  {msg.text}
-                </div>
-              ) : (
-                <div
-                  className={`max-w-[85%] md:max-w-[65%] px-[22px] py-[15px] leading-[1.6] text-[17px] font-body shadow-md
-                    ${
-                      msg.senderId === myUserId
-                        ? "bg-[#F0EBE3] text-[#0A0908] rounded-[24px] rounded-br-[4px]"
-                        : "bg-surface/60 backdrop-blur-md border border-border/40 text-text-primary rounded-[24px] rounded-bl-[4px]"
-                    }`}
+          {messages.map((msg, idx) => {
+            // Label the first two messages (the initial prompts)
+            const isInitialPrompt = idx < 2 && !msg.isSystem;
+            const reflectionLabel = isInitialPrompt 
+              ? (msg.senderId === myUserId ? "Your Reflection" : "Their Reflection")
+              : null;
+
+            return (
+              <div key={msg.id} className="flex flex-col gap-2">
+                {reflectionLabel && (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className={`flex w-full ${msg.senderId === myUserId ? "justify-end" : "justify-start"} px-1`}
+                  >
+                    <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-text-secondary/60">
+                      {reflectionLabel}
+                    </span>
+                  </motion.div>
+                )}
+                <motion.div
+                  initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 450, damping: 25 }}
+                  className={`flex w-full ${msg.isSystem ? "justify-center my-4" : msg.senderId === myUserId ? "justify-end" : "justify-start"}`}
                 >
-                  {msg.text}
-                </div>
-              )}
-            </motion.div>
-          ))}
+                  {msg.isSystem ? (
+                    <div className="px-5 py-2 bg-surface/40 backdrop-blur-[2px] rounded-full border border-border/20 text-xs md:text-sm font-mono text-text-secondary shadow-sm">
+                      {msg.text}
+                    </div>
+                  ) : (
+                    <div
+                      className={`max-w-[85%] md:max-w-[65%] px-[22px] py-[15px] leading-[1.6] text-[17px] font-body shadow-md
+                        ${
+                          msg.senderId === myUserId
+                            ? "bg-[#F0EBE3] text-[#0A0908] rounded-[24px] rounded-br-[4px]"
+                            : "bg-surface/60 backdrop-blur-md border border-border/40 text-text-primary rounded-[24px] rounded-bl-[4px]"
+                        }`}
+                    >
+                      {msg.text}
+                    </div>
+                  )}
+                </motion.div>
+              </div>
+            );
+          })}
         </AnimatePresence>
 
 

@@ -19,8 +19,21 @@ export default function MatchRevealPage() {
   useEffect(() => {
     if (roomId) {
       getIdToken().then(token => getRoom(token, roomId)).then(data => {
-        if (data.status === "active" && data.icebreakers && data.icebreakers.length > 0) {
-          setIcebreakerWords(data.icebreakers[0].split(" "));
+        if (data.status === "active") {
+          if (data.icebreakers && data.icebreakers.length > 0) {
+            setIcebreakerWords(data.icebreakers[0].split(" "));
+          }
+          if (data.expiresAt) {
+            const diffSeconds = Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000);
+            if (diffSeconds > 0) {
+              const h = Math.floor(diffSeconds / 3600);
+              const m = Math.floor((diffSeconds % 3600) / 60);
+              const s = diffSeconds % 60;
+              setTimeLeft({ h, m, s });
+            } else {
+              setTimeLeft({ h: 0, m: 0, s: 0 });
+            }
+          }
         }
       }).catch(console.error);
     }
@@ -32,13 +45,15 @@ export default function MatchRevealPage() {
     // Show CTA after the words finish animating
     const ctaWait = setTimeout(() => setShowCTA(true), icebreakerWords.length * 250 + 1500);
     
-    // Simple mock countdown
+    // Simple mock countdown syncs from the true initial time
     const timer = setInterval(() => {
       setTimeLeft(prev => {
+        if (prev.h === 0 && prev.m === 0 && prev.s === 0) return prev;
         let {h, m, s} = prev;
         s--;
         if (s < 0) { s = 59; m--; }
         if (m < 0) { m = 59; h--; }
+        if (h < 0) return { h: 0, m: 0, s: 0 };
         return {h, m, s};
       });
     }, 1000);

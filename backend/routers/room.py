@@ -9,7 +9,7 @@ import re
 
 from auth import get_current_user_id
 from database import rooms_collection, entries_collection
-from models import Room
+from models import Room, ChatMessage
 
 router = APIRouter(prefix="/api/room", tags=["room"])
 
@@ -78,6 +78,25 @@ async def create_room_internal(user_a_id: str, entry_a_id, user_b_id: str, entry
         except Exception as e:
             print(f"Lava request failed: {e}")
             
+    # Initialize room with both users' secret prompts
+    initial_messages = []
+    if entry_a:
+        initial_messages.append(ChatMessage(
+            id=str(uuid.uuid4()),
+            text=entry_a.get("raw_content") or entry_a.get("text", ""),
+            senderId=user_a_id,
+            isSystem=False,
+            createdAt=datetime.now(timezone.utc)
+        ))
+    if entry_b:
+        initial_messages.append(ChatMessage(
+            id=str(uuid.uuid4()),
+            text=entry_b.get("raw_content") or entry_b.get("text", ""),
+            senderId=user_b_id,
+            isSystem=False,
+            createdAt=datetime.now(timezone.utc)
+        ))
+
     # 4. Create Room
     supabase_channel = f"room-{uuid.uuid4()}"
     new_room = Room(
@@ -89,6 +108,7 @@ async def create_room_internal(user_a_id: str, entry_a_id, user_b_id: str, entry
         titleA=entry_a.get("title") if entry_a else None,
         titleB=entry_b.get("title") if entry_b else None,
         supabaseChannel=supabase_channel,
+        messages=initial_messages,
         createdAt=datetime.now(timezone.utc),
         expired=False,
         expiresAt=datetime.now(timezone.utc) + timedelta(hours=24)
@@ -120,7 +140,7 @@ async def get_room(room_id: str, user_id: str = Depends(get_current_user_id)):
         "status": "active",
         "icebreakers": room.get("icebreakers", []),
         "supabaseChannel": room["supabaseChannel"],
-        "expiresAt": room["expiresAt"],
+        "expiresAt": room["expiresAt"].isoformat() + "Z" if room.get("expiresAt") else None,
         "userAId": room["userAId"],
         "userBId": room["userBId"],
         "userAConnected": room.get("userAConnected", False),

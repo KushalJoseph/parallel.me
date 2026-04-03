@@ -62,35 +62,40 @@ export default function LandingClient() {
         >
           <Link
             href="/how-it-works"
-            className="bg-accent hover:bg-accent/90 text-white px-14 py-5 rounded-full font-body text-xl font-medium tracking-wide transition-all shadow-[0_4px_25px_rgba(226,79,68,0.3)] hover:shadow-[0_6px_30px_rgba(226,79,68,0.45)] active:scale-[0.97]"
+            className="group relative bg-gradient-to-r from-accent to-accent-warm text-white px-16 py-5 rounded-full font-body text-xl font-medium tracking-wider transition-all shadow-[0_0_40px_rgba(200,68,42,0.4)] hover:shadow-[0_0_60px_rgba(226,79,68,0.6)] border border-white/20 active:scale-[0.97] overflow-hidden"
           >
+            <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             Begin
           </Link>
         </motion.div>
       </div>
 
-      {/* Blurred Chat Glimpse */}
-      <motion.div
-        className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-[90%] md:w-full max-w-md h-[30vh] md:h-[35vh] flex flex-col justify-end p-6 gap-4 overflow-hidden pointer-events-none"
-        initial={{ y: 200, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ type: "spring", bounce: 0.25, duration: 0.9, delay: 0.6 }}
+      {/* Infinite Ghost Marquee */}
+      <div
+        className="absolute inset-0 z-0 pointer-events-none overflow-hidden flex justify-center items-center opacity-[0.15] blur-[2px]"
         style={{
           maskImage:
-            "linear-gradient(to bottom, transparent 0%, black 50%, black 100%)",
+            "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)",
           WebkitMaskImage:
-            "linear-gradient(to bottom, transparent 0%, black 50%, black 100%)",
+            "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)",
         }}
       >
-        <div className="w-3/4 max-w-[240px] h-[52px] bg-surface/80 rounded-2xl rounded-tl-sm self-start blur-[1px]" />
-        <div className="w-2/3 max-w-[200px] h-[52px] bg-accent/20 rounded-2xl rounded-tr-sm self-end blur-[1px]" />
-        <div className="w-5/6 max-w-[280px] h-16 bg-surface/80 rounded-2xl rounded-tl-sm self-start blur-[1px]" />
-
-        {/* Input Bar Mock */}
-        <div className="w-full flex justify-center mt-4">
-          <div className="w-full h-12 bg-surface rounded-full opacity-50 blur-[1px]" />
-        </div>
-      </motion.div>
+        <motion.div
+           animate={{ y: ["0%", "-50%"] }}
+           transition={{ repeat: Infinity, duration: 60, ease: "linear" }}
+           className="flex flex-col gap-12 items-center italic font-display text-2xl md:text-3xl text-text-primary px-8 text-center min-w-max"
+        >
+          {Array(8).fill([
+            "I'm terrified of failing again...", 
+            "Today was unexpectedly quiet.", 
+            "Why does it feel like I'm falling behind?", 
+            "I finally feel like I belong here.", 
+            "Just wishing I had someone to tell this to."
+          ]).flat().map((text, i) => (
+             <span key={i} className="whitespace-nowrap">{text}</span>
+          ))}
+        </motion.div>
+      </div>
     </main>
   );
 }

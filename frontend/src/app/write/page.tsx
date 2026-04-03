@@ -226,12 +226,12 @@ export default function WritePage() {
       {/* ── Desktop sidebar — collapsible inline ── */}
       <motion.aside
         initial={false}
-        animate={{ width: desktopSidebarOpen ? 320 : 0 }}
+        animate={{ width: desktopSidebarOpen ? 360 : 0 }}
         transition={{ type: "spring", stiffness: 280, damping: 28 }}
         className="hidden md:flex flex-col flex-none overflow-hidden bg-white/10 backdrop-blur-3xl border-r border-white/20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]"
       >
         {/* Fixed-width inner so content doesn't reflow during animation */}
-        <div className="w-[320px] h-full flex flex-col">
+        <div className="w-[360px] h-full flex flex-col">
           <SidebarContent
             conversations={conversations}
             onCardClick={handleCardClick}
@@ -276,7 +276,7 @@ export default function WritePage() {
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="fixed top-0 left-0 h-full w-[320px] bg-white/20 backdrop-blur-3xl border-r border-white/20 shadow-[10px_0_30px_rgba(0,0,0,0.05)] z-30 flex flex-col md:hidden"
+              className="fixed top-0 left-0 h-full w-[360px] bg-white/20 backdrop-blur-3xl border-r border-white/20 shadow-[10px_0_30px_rgba(0,0,0,0.05)] z-30 flex flex-col md:hidden"
             >
               <SidebarContent
                 conversations={conversations}
@@ -433,26 +433,13 @@ export default function WritePage() {
                 key="loading"
                 initial={{ opacity: 0, filter: "blur(8px)", scale: 1.05 }}
                 animate={{ opacity: 1, filter: "blur(0px)", scale: 1 }}
-                className="absolute inset-0 flex flex-col items-center justify-center pb-[10vh]"
+                className="absolute inset-0 flex flex-col items-center justify-center pb-[10vh] gap-8"
               >
-                <div className="relative w-64 h-64 md:w-80 md:h-80 flex items-center justify-center mb-16">
-                  <motion.div
-                    animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.7, 0.3] }}
-                    transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                    className="absolute inset-[-10%] bg-accent-warm/30 rounded-full blur-[60px]"
-                  />
-                  <div className="h-48 md:h-60 w-auto opacity-80 z-10">
-                    <img src="/logo.png" alt="Parallel" className="h-full w-auto object-contain pointer-events-none drop-shadow-xl" />
-                  </div>
-                </div>
+                <div className="w-10 h-10 border-[3px] border-text-secondary/10 border-t-accent rounded-full animate-spin" />
                 
-                <motion.p
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                  className="font-display italic text-4xl md:text-5xl text-text-primary flex justify-center tracking-wide"
-                >
-                  <span className="w-72 md:w-[300px] text-left">Listening{".".repeat(dotCount)}</span>
-                </motion.p>
+                <p className="font-body text-text-secondary text-xl tracking-wide flex justify-center">
+                  <span className="w-24 text-left">Loading{".".repeat(dotCount)}</span>
+                </p>
               </motion.div>
             )}
           </AnimatePresence>
